@@ -1,160 +1,303 @@
 #import <UIKit/UIKit.h>
+#import <QuartzCore/QuartzCore.h>
 #import <objc/runtime.h>
 
-static char kZPInstalledKey;
+static char kZolaNavBlurKey;
+static char kZolaTabBlurKey;
+static char kZolaToolbarBlurKey;
 
-static UIViewController *ZPTopViewController(UIViewController *vc) {
-    UIViewController *candidate = vc;
+#pragma mark - Color
 
-    while (candidate) {
-        UIViewController *next = nil;
-
-        if (candidate.presentedViewController &&
-            !candidate.presentedViewController.isBeingDismissed) {
-            next = candidate.presentedViewController;
-        } else if ([candidate isKindOfClass:[UINavigationController class]]) {
-            next = [(UINavigationController *)candidate visibleViewController];
-        } else if ([candidate isKindOfClass:[UITabBarController class]]) {
-            next = [(UITabBarController *)candidate selectedViewController];
-        }
-
-        if (!next || next == candidate) {
-            break;
-        }
-
-        candidate = next;
+static UIColor *ZolaColorFromHex(NSString *hex) {
+    if (![hex isKindOfClass:[NSString class]]) {
+        return nil;
     }
 
-    return candidate;
+    NSString *clean = [[hex stringByReplacingOccurrencesOfString:@"#" withString:@""]
+                       uppercaseString];
+
+    if (clean.length != 6 && clean.length != 8) {
+        return nil;
+    }
+
+    unsigned int value = 0;
+    NSScanner *scanner = [NSScanner scannerWithString:clean];
+    if (![scanner scanHexInt:&value]) {
+        return nil;
+    }
+
+    CGFloat r, g, b, a = 1.0;
+
+    if (clean.length == 8) {
+        r = ((value >> 24) & 0xFF) / 255.0;
+        g = ((value >> 16) & 0xFF) / 255.0;
+        b = ((value >> 8) & 0xFF) / 255.0;
+        a = (value & 0xFF) / 255.0;
+    } else {
+        r = ((value >> 16) & 0xFF) / 255.0;
+        g = ((value >> 8) & 0xFF) / 255.0;
+        b = (value & 0xFF) / 255.0;
+    }
+
+    return [UIColor colorWithRed:r green:g blue:b alpha:a];
 }
 
-static void ZPTriggerDump(UIWindow *window) {
-    if (!window) {
-        return;
+static UIColor *ZolaBubbleColor(void) {
+    NSString *hex = [[NSUserDefaults standardUserDefaults]
+                      stringForKey:@"ZolaThemeBubbleColorHex"];
+
+    if (hex.length == 0) {
+        hex = @"E6F4FF";
     }
 
-    // Resolve private UIKit debugging API dynamically.
-    SEL selector = sel_registerName("recursiveDescription");
+    return ZolaColorFromHex(hex) ?: [UIColor colorWithRed:0.90
+                                                     green:0.96
+                                                      blue:1.0
+                                                     alpha:1.0];
+}
 
-    if (![window respondsToSelector:selector]) {
-        return;
+#pragma mark - Blur
+
+static UIVisualEffectView *ZolaEnsureBlur(UIView *container, char *key) {
+    UIVisualEffectView *blur =
+        objc_getAssociatedObject(container, key);
+
+    if (!blur) {
+        UIBlurEffect *effect =
+            [UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemMaterial];
+
+        blur = [[UIVisualEffectView alloc] initWithEffect:effect];
+        blur.userInteractionEnabled = NO;
+        blur.autoresizingMask =
+            UIViewAutoresizingFlexibleWidth |
+            UIViewAutoresizingFlexibleHeight;
+
+        objc_setAssociatedObject(container,
+                                 key,
+                                 blur,
+                                 OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+
+        [container insertSubview:blur atIndex:0];
     }
 
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Warc-performSelector-leaks"
-    NSString *dump = [window performSelector:selector];
-#pragma clang diagnostic pop
+    blur.frame = container.bounds;
+    [container sendSubviewToBack:blur];
 
-    if (![dump isKindOfClass:[NSString class]]) {
-        dump = @"<recursiveDescription returned non-NSString>";
+    return blur;
+}
+
+#pragma mark - Background cleanup
+
+static BOOL ZolaLooksLikeSystemBackgroundImageView(UIView *view, UIView *parent) {
+    if (![view isKindOfClass:[UIImageView class]]) {
+        return NO;
     }
 
-    NSArray<NSURL *> *documentURLs =
-        [[NSFileManager defaultManager]
-            URLsForDirectory:NSDocumentDirectory
-            inDomains:NSUserDomainMask];
-
-    NSURL *documentsURL = documentURLs.firstObject;
-
-    if (!documentsURL) {
-        return;
+    if (view.frame.size.width < parent.bounds.size.width * 0.85) {
+        return NO;
     }
 
-    NSURL *outputURL =
-        [documentsURL URLByAppendingPathComponent:@"Zalo_UI_Dump.txt"];
+    if (view.frame.size.height < parent.bounds.size.height * 0.60) {
+        return NO;
+    }
 
-    NSError *error = nil;
+    NSString *colorDescription = view.backgroundColor.description ?: @"";
+    return [colorDescription localizedCaseInsensitiveContainsString:@"systemBackgroundColor"];
+}
 
-    BOOL success =
-        [dump writeToURL:outputURL
-               atomically:YES
-                 encoding:NSUTF8StringEncoding
-                    error:&error];
+static void ZolaHideBackgroundSubviews(UIView *container) {
+    for (UIView *view in container.subviews) {
+        NSString *className = NSStringFromClass(view.class);
 
-    dispatch_async(dispatch_get_main_queue(), ^{
-        UIViewController *top =
-            ZPTopViewController(window.rootViewController);
-
-        if (!top) {
-            return;
+        if ([className isEqualToString:@"_ZDSNavigationBarBackgroundView"] ||
+            [className isEqualToString:@"_UIBarBackground"]) {
+            view.hidden = YES;
+            view.alpha = 0.0;
+            continue;
         }
 
-        NSString *message = success
-            ? @"Probe 抓取成功"
-            : (error.localizedDescription ?: @"无法写入 Zalo_UI_Dump.txt");
-
-        UIAlertController *alert =
-            [UIAlertController
-                alertControllerWithTitle:@"Zalo Probe"
-                                  message:message
-                           preferredStyle:UIAlertControllerStyleAlert];
-
-        [alert addAction:
-            [UIAlertAction
-                actionWithTitle:@"确定"
-                          style:UIAlertActionStyleDefault
-                        handler:nil]];
-
-        [top presentViewController:alert
-                          animated:YES
-                        completion:nil];
-    });
+        if (ZolaLooksLikeSystemBackgroundImageView(view, container)) {
+            view.hidden = YES;
+            view.alpha = 0.0;
+        }
+    }
 }
 
-static void ZPInstallGesture(UIWindow *window) {
-    if (!window) {
+#pragma mark - UIImage recoloring
+
+static UIImage *ZolaTintBubbleImage(UIImage *image, UIColor *color) {
+    if (!image || !color) {
+        return image;
+    }
+
+    CGFloat scale = image.scale > 0 ? image.scale : UIScreen.mainScreen.scale;
+    CGSize size = image.size;
+
+    UIGraphicsBeginImageContextWithOptions(size, NO, scale);
+    CGRect rect = (CGRect){CGPointZero, size};
+
+    [image drawInRect:rect];
+
+    color = [color colorWithAlphaComponent:1.0];
+    [color setFill];
+
+    UIRectFillUsingBlendMode(rect, kCGBlendModeSourceIn);
+
+    UIImage *tinted = UIGraphicsGetImageFromCurrentImageContext();
+    UIGraphicsEndImageContext();
+
+    return tinted ?: image;
+}
+
+static UIImageView *ZolaFindBubbleImageView(UIView *view) {
+    for (UIView *subview in view.subviews) {
+        if ([subview isKindOfClass:[UIImageView class]]) {
+            UIImageView *imageView = (UIImageView *)subview;
+
+            if (imageView.image) {
+                NSString *imageClass =
+                    NSStringFromClass(imageView.image.class);
+
+                if ([imageClass isEqualToString:@"_UIResizableImage"] ||
+                    CGRectEqualToRect(imageView.frame, view.bounds)) {
+                    return imageView;
+                }
+            }
+        }
+
+        UIImageView *nested = ZolaFindBubbleImageView(subview);
+        if (nested) {
+            return nested;
+        }
+    }
+
+    return nil;
+}
+
+static void ZolaStyleBubbleButton(UIView *bubbleButton) {
+    UIImageView *imageView = ZolaFindBubbleImageView(bubbleButton);
+
+    if (!imageView || !imageView.image) {
         return;
     }
 
-    if (objc_getAssociatedObject(window, &kZPInstalledKey)) {
-        return;
-    }
+    UIColor *bubbleColor = ZolaBubbleColor();
 
-    UILongPressGestureRecognizer *gesture =
-        [[UILongPressGestureRecognizer alloc]
-            initWithTarget:window
-                    action:@selector(zp_handleLongPress:)];
+    // Preserve Zalo's original resizable bubble silhouette/tail,
+    // while recoloring the image instead of replacing its geometry.
+    imageView.image = ZolaTintBubbleImage(imageView.image, bubbleColor);
+    imageView.backgroundColor = UIColor.clearColor;
+    imageView.alpha = 1.0;
+    imageView.hidden = NO;
 
-    gesture.minimumPressDuration = 2.0;
-    gesture.numberOfTouchesRequired = 2;
-    gesture.cancelsTouchesInView = NO;
+    CALayer *layer = imageView.layer;
 
-    objc_setAssociatedObject(window,
-                             &kZPInstalledKey,
-                             gesture,
-                             OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    // Keep the original bubble bounds but add a soft drop shadow.
+    layer.cornerRadius = 16.0;
+    layer.masksToBounds = NO;
 
-    [window addGestureRecognizer:gesture];
+    layer.shadowColor = UIColor.blackColor.CGColor;
+    layer.shadowOpacity = 0.14;
+    layer.shadowRadius = 5.0;
+    layer.shadowOffset = CGSizeMake(0.0, 2.0);
+
+    // No explicit rectangle path: Core Animation can derive the shadow
+    // from the image-backed layer's visible content.
+    layer.shadowPath = nil;
 }
 
-%hook UIWindow
+#pragma mark - Recursive bubble search
 
-- (void)becomeKeyWindow {
+static void ZolaStyleBubblesInView(UIView *view) {
+    for (UIView *subview in view.subviews) {
+        NSString *className = NSStringFromClass(subview.class);
+
+        if ([className isEqualToString:@"SubMenuButton"]) {
+            ZolaStyleBubbleButton(subview);
+        }
+
+        ZolaStyleBubblesInView(subview);
+    }
+}
+
+#pragma mark - Navigation Bar
+
+%hook UXNavigationBar
+
+- (void)layoutSubviews {
     %orig;
 
-    UIWindow *window = self;
+    self.backgroundColor = UIColor.clearColor;
+    self.layer.backgroundColor = UIColor.clearColor.CGColor;
+    self.layer.opaque = NO;
+    self.layer.shadowOpacity = 0.0;
 
-    dispatch_async(dispatch_get_main_queue(), ^{
-        ZPInstallGesture(window);
-    });
-}
-
-%new
-- (void)zp_handleLongPress:(UILongPressGestureRecognizer *)gesture {
-    if (gesture.state != UIGestureRecognizerStateBegan) {
-        return;
+    // The dump shows Zalo's real navigation background class.
+    for (UIView *view in self.subviews) {
+        if ([NSStringFromClass(view.class)
+             isEqualToString:@"_ZDSNavigationBarBackgroundView"]) {
+            view.hidden = YES;
+            view.alpha = 0.0;
+        }
     }
 
-    ZPTriggerDump((UIWindow *)gesture.view);
+    // Associated object prevents duplicate blur views.
+    ZolaEnsureBlur(self, &kZolaNavBlurKey);
 }
 
 %end
 
-%ctor {
-    NSBundle *bundle = [NSBundle mainBundle];
+#pragma mark - Chat input toolbar
 
-    // Safety guard: this dylib is intended for Zalo only.
-    if (![bundle.bundleIdentifier isEqualToString:@"com.vng.zalo"]) {
-        return;
-    }
+%hook KBToolbarView
+
+- (void)layoutSubviews {
+    %orig;
+
+    self.backgroundColor = UIColor.clearColor;
+    self.layer.backgroundColor = UIColor.clearColor.CGColor;
+    self.layer.opaque = NO;
+
+    ZolaHideBackgroundSubviews(self);
+    ZolaEnsureBlur(self, &kZolaToolbarBlurKey);
 }
+
+%end
+
+#pragma mark - Main Tab Bar
+
+%hook UITabBar
+
+- (void)layoutSubviews {
+    %orig;
+
+    self.backgroundColor = UIColor.clearColor;
+    self.layer.backgroundColor = UIColor.clearColor.CGColor;
+    self.layer.opaque = NO;
+    self.layer.shadowOpacity = 0.0;
+
+    // Dump shows UITabBar -> _UIBarBackground -> UIImageView(systemBackgroundColor).
+    ZolaHideBackgroundSubviews(self);
+    ZolaEnsureBlur(self, &kZolaTabBlurKey);
+}
+
+%end
+
+#pragma mark - Text message bubble
+
+%hook ALTextMessageTableItemCell
+
+- (void)layoutSubviews {
+    %orig;
+
+    // The dump shows:
+    // ALTextMessageTableItemCell
+    //   -> MenuButton
+    //      -> SubMenuButton
+    //         -> UIImageView(image = _UIResizableImage)
+    //
+    // We keep that original image geometry and only recolor/style it.
+    ZolaStyleBubblesInView(self.contentView);
+}
+
+%end
