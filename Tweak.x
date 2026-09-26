@@ -2,10 +2,6 @@
 #import <QuartzCore/QuartzCore.h>
 #import <objc/runtime.h>
 
-static char kZolaNavBlurKey;
-static char kZolaTabBlurKey;
-static char kZolaToolbarBlurKey;
-
 #pragma mark - Color
 
 static UIColor *ZolaColorFromHex(NSString *hex) {
@@ -56,67 +52,16 @@ static UIColor *ZolaBubbleColor(void) {
                                                      alpha:1.0];
 }
 
-#pragma mark - Blur
+#pragma mark - Transparent bar cleanup
 
-static UIVisualEffectView *ZolaEnsureBlur(UIView *container, char *key) {
-    UIVisualEffectView *blur =
-        objc_getAssociatedObject(container, key);
+static void ZolaHideTransparentBarChildren(UIView *container) {
+    UIView *containerView = (UIView *)container;
 
-    if (!blur) {
-        UIBlurEffect *effect =
-            [UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemMaterial];
-
-        blur = [[UIVisualEffectView alloc] initWithEffect:effect];
-        blur.userInteractionEnabled = NO;
-        blur.autoresizingMask =
-            UIViewAutoresizingFlexibleWidth |
-            UIViewAutoresizingFlexibleHeight;
-
-        objc_setAssociatedObject(container,
-                                 key,
-                                 blur,
-                                 OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-
-        [container insertSubview:blur atIndex:0];
-    }
-
-    blur.frame = container.bounds;
-    [container sendSubviewToBack:blur];
-
-    return blur;
-}
-
-#pragma mark - Background cleanup
-
-static BOOL ZolaLooksLikeSystemBackgroundImageView(UIView *view, UIView *parent) {
-    if (![view isKindOfClass:[UIImageView class]]) {
-        return NO;
-    }
-
-    if (view.frame.size.width < parent.bounds.size.width * 0.85) {
-        return NO;
-    }
-
-    if (view.frame.size.height < parent.bounds.size.height * 0.60) {
-        return NO;
-    }
-
-    NSString *colorDescription = view.backgroundColor.description ?: @"";
-    return [colorDescription localizedCaseInsensitiveContainsString:@"systemBackgroundColor"];
-}
-
-static void ZolaHideBackgroundSubviews(UIView *container) {
-    for (UIView *view in container.subviews) {
+    for (UIView *view in containerView.subviews) {
         NSString *className = NSStringFromClass(view.class);
 
-        if ([className isEqualToString:@"_ZDSNavigationBarBackgroundView"] ||
-            [className isEqualToString:@"_UIBarBackground"]) {
-            view.hidden = YES;
-            view.alpha = 0.0;
-            continue;
-        }
-
-        if (ZolaLooksLikeSystemBackgroundImageView(view, container)) {
+        if ([className isEqualToString:@"_UIBarBackground"] ||
+            [view isKindOfClass:[UIImageView class]]) {
             view.hidden = YES;
             view.alpha = 0.0;
         }
@@ -183,16 +128,13 @@ static void ZolaStyleBubbleButton(UIView *bubbleButton) {
 
     UIColor *bubbleColor = ZolaBubbleColor();
 
-    // Preserve Zalo's original resizable bubble silhouette/tail,
-    // while recoloring the image instead of replacing its geometry.
+    // Keep the V2 bubble styling unchanged.
     imageView.image = ZolaTintBubbleImage(imageView.image, bubbleColor);
     imageView.backgroundColor = UIColor.clearColor;
     imageView.alpha = 1.0;
     imageView.hidden = NO;
 
     CALayer *layer = imageView.layer;
-
-    // Keep the original bubble bounds but add a soft drop shadow.
     layer.cornerRadius = 16.0;
     layer.masksToBounds = NO;
 
@@ -200,9 +142,6 @@ static void ZolaStyleBubbleButton(UIView *bubbleButton) {
     layer.shadowOpacity = 0.14;
     layer.shadowRadius = 5.0;
     layer.shadowOffset = CGSizeMake(0.0, 2.0);
-
-    // No explicit rectangle path: Core Animation can derive the shadow
-    // from the image-backed layer's visible content.
     layer.shadowPath = nil;
 }
 
@@ -212,7 +151,8 @@ static void ZolaStyleBubblesInView(UIView *view) {
     for (UIView *subview in view.subviews) {
         NSString *className = NSStringFromClass(subview.class);
 
-        if ([className isEqualToString:@"SubMenuButton"]) {
+        if ([className isEqualToString:@"SubMenuButton"] ||
+            [className isEqualToString:@"MenuButton"]) {
             ZolaStyleBubbleButton(subview);
         }
 
@@ -220,7 +160,34 @@ static void ZolaStyleBubblesInView(UIView *view) {
     }
 }
 
-#pragma mark - Navigation Bar
+#pragma mark - Navigation background
+
+%hook _ZDSNavigationBarBackgroundView
+
+- (void)layoutSubviews {
+    %orig;
+
+    UIView *backgroundView = (UIView *)self;
+
+    backgroundView.backgroundColor = UIColor.clearColor;
+    backgroundView.layer.backgroundColor = UIColor.clearColor.CGColor;
+    backgroundView.layer.opaque = NO;
+
+    // Clear Zalo's default pattern image completely.
+    backgroundView.layer.contents = nil;
+
+    // Remove any remaining image-backed border / texture views.
+    for (UIView *view in backgroundView.subviews) {
+        if ([view isKindOfClass:[UIImageView class]]) {
+            view.hidden = YES;
+            view.alpha = 0.0;
+        }
+    }
+}
+
+%end
+
+#pragma mark - Navigation bar container
 
 %hook UXNavigationBar
 
@@ -233,18 +200,24 @@ static void ZolaStyleBubblesInView(UIView *view) {
     barView.layer.backgroundColor = UIColor.clearColor.CGColor;
     barView.layer.opaque = NO;
     barView.layer.shadowOpacity = 0.0;
+}
 
-    // The dump shows Zalo's real navigation background class.
-    for (UIView *view in barView.subviews) {
-        if ([NSStringFromClass(view.class)
-             isEqualToString:@"_ZDSNavigationBarBackgroundView"]) {
-            view.hidden = YES;
-            view.alpha = 0.0;
-        }
-    }
+%end
 
-    // Associated object prevents duplicate blur views.
-    ZolaEnsureBlur(barView, &kZolaNavBlurKey);
+#pragma mark - Chat input component
+
+%hook KBChatInputComponentView
+
+- (void)layoutSubviews {
+    %orig;
+
+    UIView *inputView = (UIView *)self;
+
+    inputView.backgroundColor = UIColor.clearColor;
+    inputView.layer.backgroundColor = UIColor.clearColor.CGColor;
+    inputView.layer.opaque = NO;
+
+    ZolaHideTransparentBarChildren(inputView);
 }
 
 %end
@@ -262,27 +235,26 @@ static void ZolaStyleBubblesInView(UIView *view) {
     toolbarView.layer.backgroundColor = UIColor.clearColor.CGColor;
     toolbarView.layer.opaque = NO;
 
-    ZolaHideBackgroundSubviews(toolbarView);
-    ZolaEnsureBlur(toolbarView, &kZolaToolbarBlurKey);
+    ZolaHideTransparentBarChildren(toolbarView);
 }
 
 %end
 
-#pragma mark - Main Tab Bar
+#pragma mark - Main tab bar
 
 %hook UITabBar
 
 - (void)layoutSubviews {
     %orig;
 
-    self.backgroundColor = UIColor.clearColor;
-    self.layer.backgroundColor = UIColor.clearColor.CGColor;
-    self.layer.opaque = NO;
-    self.layer.shadowOpacity = 0.0;
+    UIView *tabBarView = (UIView *)self;
 
-    // Dump shows UITabBar -> _UIBarBackground -> UIImageView(systemBackgroundColor).
-    ZolaHideBackgroundSubviews(self);
-    ZolaEnsureBlur(self, &kZolaTabBlurKey);
+    tabBarView.backgroundColor = UIColor.clearColor;
+    tabBarView.layer.backgroundColor = UIColor.clearColor.CGColor;
+    tabBarView.layer.opaque = NO;
+    tabBarView.layer.shadowOpacity = 0.0;
+
+    ZolaHideTransparentBarChildren(tabBarView);
 }
 
 %end
@@ -294,13 +266,7 @@ static void ZolaStyleBubblesInView(UIView *view) {
 - (void)layoutSubviews {
     %orig;
 
-    // The dump shows:
-    // ALTextMessageTableItemCell
-    //   -> MenuButton
-    //      -> SubMenuButton
-    //         -> UIImageView(image = _UIResizableImage)
-    //
-    // We keep that original image geometry and only recolor/style it.
+    // Preserve the existing V2 bubble styling for MenuButton/SubMenuButton.
     UICollectionViewCell *cell = (UICollectionViewCell *)self;
     ZolaStyleBubblesInView(cell.contentView);
 }
