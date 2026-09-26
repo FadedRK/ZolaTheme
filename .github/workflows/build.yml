@@ -1,0 +1,61 @@
+name: Build ZaloProbe
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Theos
+        run: |
+          git clone --recursive https://github.com/theos/theos.git "$HOME/theos"
+          echo "THEOS=$HOME/theos" >> "$GITHUB_ENV"
+
+      - name: Install build dependencies
+        run: |
+          brew install ldid xz
+
+      - name: Build arm64 dylib
+        run: |
+          make
+
+      - name: Collect ZaloProbe.dylib
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          candidates=(
+            ".theos/obj/debug/ZaloProbe.dylib"
+            ".theos/obj/ZaloProbe.dylib"
+          )
+
+          dylib=""
+          for candidate in "${candidates[@]}"; do
+            if [[ -f "$candidate" ]]; then
+              dylib="$candidate"
+              break
+            fi
+          done
+
+          if [[ -z "$dylib" ]]; then
+            dylib="$(find .theos/obj -type f -name 'ZaloProbe.dylib' -print -quit)"
+          fi
+
+          test -n "$dylib"
+          mkdir -p artifacts
+          cp "$dylib" artifacts/ZaloProbe.dylib
+          file artifacts/ZaloProbe.dylib
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ZaloProbe-Dylib
+          path: artifacts/ZaloProbe.dylib
+          if-no-files-found: error
