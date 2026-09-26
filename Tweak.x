@@ -227,13 +227,15 @@ static void ZolaStyleBubblesInView(UIView *view) {
 - (void)layoutSubviews {
     %orig;
 
-    self.backgroundColor = UIColor.clearColor;
-    self.layer.backgroundColor = UIColor.clearColor.CGColor;
-    self.layer.opaque = NO;
-    self.layer.shadowOpacity = 0.0;
+    UIView *barView = (UIView *)self;
+
+    barView.backgroundColor = UIColor.clearColor;
+    barView.layer.backgroundColor = UIColor.clearColor.CGColor;
+    barView.layer.opaque = NO;
+    barView.layer.shadowOpacity = 0.0;
 
     // The dump shows Zalo's real navigation background class.
-    for (UIView *view in self.subviews) {
+    for (UIView *view in barView.subviews) {
         if ([NSStringFromClass(view.class)
              isEqualToString:@"_ZDSNavigationBarBackgroundView"]) {
             view.hidden = YES;
@@ -242,7 +244,7 @@ static void ZolaStyleBubblesInView(UIView *view) {
     }
 
     // Associated object prevents duplicate blur views.
-    ZolaEnsureBlur(self, &kZolaNavBlurKey);
+    ZolaEnsureBlur(barView, &kZolaNavBlurKey);
 }
 
 %end
@@ -254,12 +256,14 @@ static void ZolaStyleBubblesInView(UIView *view) {
 - (void)layoutSubviews {
     %orig;
 
-    self.backgroundColor = UIColor.clearColor;
-    self.layer.backgroundColor = UIColor.clearColor.CGColor;
-    self.layer.opaque = NO;
+    UIView *toolbarView = (UIView *)self;
 
-    ZolaHideBackgroundSubviews(self);
-    ZolaEnsureBlur(self, &kZolaToolbarBlurKey);
+    toolbarView.backgroundColor = UIColor.clearColor;
+    toolbarView.layer.backgroundColor = UIColor.clearColor.CGColor;
+    toolbarView.layer.opaque = NO;
+
+    ZolaHideBackgroundSubviews(toolbarView);
+    ZolaEnsureBlur(toolbarView, &kZolaToolbarBlurKey);
 }
 
 %end
@@ -297,7 +301,8 @@ static void ZolaStyleBubblesInView(UIView *view) {
     //         -> UIImageView(image = _UIResizableImage)
     //
     // We keep that original image geometry and only recolor/style it.
-    ZolaStyleBubblesInView(self.contentView);
+    UICollectionViewCell *cell = (UICollectionViewCell *)self;
+    ZolaStyleBubblesInView(cell.contentView);
 }
 
 %end
