@@ -1365,70 +1365,27 @@ static void ZolaRefreshBubblesInView(UIView *root) {
     }
 }
 
-static void ZolaRefreshVisibleChatBackgrounds(void) {
-    dispatch_async(dispatch_get_main_queue(), ^{
-        for (UIWindow *window in ZolaAllWindows()) {
-            void (^walk)(UIView *) = ^(UIView *root) {
-                for (UIView *subview in root.subviews) {
-                    if ([[NSStringFromClass(subview.class)
-                          lowercaseString] isEqualToString:@"zxcollectionview"]) {
-                        ZolaApplyChatBackground(subview);
-                    }
-
-                    walk(subview);
-                }
-            };
-
-            walk(window);
-        }
-    });
-}
-
-%ctor {
-    NSBundle *bundle = [NSBundle mainBundle];
-
-    if (![bundle.bundleIdentifier isEqualToString:@"com.vng.zalo"]) {
+static void ZolaRefreshChatBackgroundsInView(UIView *root) {
+    if (!root) {
         return;
     }
 
-    dispatch_async(dispatch_get_main_queue(), ^{
-        [ZolaThemeDocumentPickerDelegate shared];
-
-        [[NSNotificationCenter defaultCenter]
-            addObserverForName:@"ZolaThemeBackgroundChanged"
-                        object:nil
-                         queue:[NSOperationQueue mainQueue]
-                    usingBlock:^(__unused NSNotification *note) {
-            ZolaRefreshVisibleChatBackgrounds();
-        }];
-
-        [[NSNotificationCenter defaultCenter]
-            addObserverForName:@"ZolaThemeBubbleChanged"
-                        object:nil
-                         queue:[NSOperationQueue mainQueue]
-                    usingBlock:^(__unused NSNotification *note) {
-            for (UIWindow *window in ZolaAllWindows()) {
-                ZolaRefreshBubblesInView(window);
-            }
-        }];
-
-        for (NSInteger i = 0; i < 30; i++) {
-            dispatch_after(dispatch_time(DISPATCH_TIME_NOW,
-                                          (int64_t)(i * 0.5 * NSEC_PER_SEC)),
-                           dispatch_get_main_queue(), ^{
-                ZolaScanAndInstallPluginEntry();
-            });
+    for (UIView *subview in root.subviews) {
+        if ([[NSStringFromClass(subview.class)
+              lowercaseString] isEqualToString:@"zxcollectionview"]) {
+            ZolaApplyChatBackground(subview);
         }
 
-        Method original =
-            class_getInstanceMethod(UIApplication.class,
-                                    @selector(sendAction:to:from:forEvent:));
-        Method replacement =
-            class_getInstanceMethod(UIApplication.class,
-                                    @selector(zolaTheme_sendAction:to:from:forEvent:));
+        ZolaRefreshChatBackgroundsInView(subview);
+    }
+}
 
-        if (original && replacement) {
-            method_exchangeImplementations(original, replacement);
+static void ZolaRefreshVisibleChatBackgrounds(void) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        for (UIWindow *window in ZolaAllWindows()) {
+            ZolaRefreshChatBackgroundsInView(window);
         }
     });
 }
+
+
