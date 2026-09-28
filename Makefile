@@ -7,7 +7,7 @@ TWEAK_NAME = ZaloProbe
 
 ZaloProbe_FILES = Tweak.x
 ZaloProbe_CFLAGS = -fobjc-arc
-ZaloProbe_FRAMEWORKS = UIKit
+ZaloProbe_FRAMEWORKS = UIKit UniformTypeIdentifiers
 
 # Use Logos' internal Objective-C runtime generator.
 # This produces the tweak dylib without invoking Debian packaging.
