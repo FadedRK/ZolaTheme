@@ -124,6 +124,8 @@ static NSArray<UIWindow *> *ZolaAllWindows(void) {
             }
         }
     } else {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
         for (UIWindow *window in UIApplication.sharedApplication.windows) {
             if (!window.hidden &&
                 window.alpha > 0.01 &&
@@ -131,6 +133,7 @@ static NSArray<UIWindow *> *ZolaAllWindows(void) {
                 [windows addObject:window];
             }
         }
+#pragma clang diagnostic pop
     }
 
     return windows;
@@ -178,30 +181,32 @@ static UIViewController *ZolaTopViewController(void) {
     return vc;
 }
 
-static UINavigationBar *ZolaFindUXNavigationBar(void) {
-    for (UIWindow *window in ZolaAllWindows()) {
-        __block UINavigationBar *found = nil;
+static UIView *ZolaFindViewWithClassName(UIView *root, NSString *className) {
+    if (!root || className.length == 0) {
+        return nil;
+    }
 
-        void (^walk)(UIView *) = ^(UIView *root) {
-            for (UIView *subview in root.subviews) {
-                if ([[NSStringFromClass(subview.class)
-                      lowercaseString] isEqualToString:@"uxnavigationbar"]) {
-                    found = (UINavigationBar *)subview;
-                    return;
-                }
+    for (UIView *subview in root.subviews) {
+        if ([NSStringFromClass(subview.class) isEqualToString:className]) {
+            return subview;
+        }
 
-                walk(subview);
-
-                if (found) {
-                    return;
-                }
-            }
-        };
-
-        walk(window);
-
+        UIView *found = ZolaFindViewWithClassName(subview, className);
         if (found) {
             return found;
+        }
+    }
+
+    return nil;
+}
+
+static UINavigationBar *ZolaFindUXNavigationBar(void) {
+    for (UIWindow *window in ZolaAllWindows()) {
+        UIView *view =
+            ZolaFindViewWithClassName(window, @"UXNavigationBar");
+
+        if (view) {
+            return (UINavigationBar *)view;
         }
     }
 
@@ -235,18 +240,9 @@ static NSString *ZolaCurrentChatKey(void) {
 
 static NSURL *ZolaThemeDirectoryURL(void) {
     NSURL *documents =
-        [ZolaAllWindows().firstObject
-            ? [[NSFileManager defaultManager]
-                URLsForDirectory:NSDocumentDirectory
-                      inDomains:NSUserDomainMask].firstObject
-            : nil];
-
-    if (!documents) {
-        documents =
-            [[NSFileManager defaultManager]
-                URLsForDirectory:NSDocumentDirectory
-                      inDomains:NSUserDomainMask].firstObject;
-    }
+        [[NSFileManager defaultManager]
+            URLsForDirectory:NSDocumentDirectory
+                   inDomains:NSUserDomainMask].firstObject;
 
     if (!documents) {
         return nil;
@@ -961,8 +957,8 @@ static void ZolaPresentSettings(void) {
 
         if (@available(iOS 15.0, *)) {
             UISheetPresentationController *sheet = nav.sheetPresentationController;
-            sheet.detents = @[UISheetPresentationDetent.mediumDetent,
-                              UISheetPresentationDetent.largeDetent];
+            sheet.detents = @[[UISheetPresentationControllerDetent mediumDetent],
+                              [UISheetPresentationControllerDetent largeDetent]];
             sheet.prefersGrabberVisible = YES;
         }
 
@@ -1040,6 +1036,11 @@ static UIView *ZolaFindMenuView(UIView *root) {
     return nil;
 }
 
+@interface ZolaThemeEntryTarget : NSObject
++ (instancetype)shared;
+- (void)openSettings:(UIButton *)sender;
+@end
+
 static void ZolaAddEntryToAntiRecallPanel(UIView *panel) {
     if (!panel ||
         [panel viewWithTag:ZolaThemeEntryButtonTag]) {
@@ -1072,11 +1073,6 @@ static void ZolaAddEntryToAntiRecallPanel(UIView *panel) {
 
     [panel addSubview:button];
 }
-
-@interface ZolaThemeEntryTarget : NSObject
-+ (instancetype)shared;
-- (void)openSettings:(UIButton *)sender;
-@end
 
 @implementation ZolaThemeEntryTarget
 
@@ -1353,6 +1349,22 @@ static void ZolaScanAndInstallPluginEntry(void) {
 
 #pragma mark - Notifications / install
 
+static void ZolaRefreshBubblesInView(UIView *root) {
+    if (!root) {
+        return;
+    }
+
+    for (UIView *subview in root.subviews) {
+        if ([[NSStringFromClass(subview.class)
+              lowercaseString] isEqualToString:@"altextmessagetableitemcell"]) {
+            UICollectionViewCell *cell = (UICollectionViewCell *)subview;
+            ZolaStyleBubblesInView(cell.contentView, cell);
+        }
+
+        ZolaRefreshBubblesInView(subview);
+    }
+}
+
 static void ZolaRefreshVisibleChatBackgrounds(void) {
     dispatch_async(dispatch_get_main_queue(), ^{
         for (UIWindow *window in ZolaAllWindows()) {
@@ -1396,22 +1408,9 @@ static void ZolaRefreshVisibleChatBackgrounds(void) {
                          queue:[NSOperationQueue mainQueue]
                     usingBlock:^(__unused NSNotification *note) {
             for (UIWindow *window in ZolaAllWindows()) {
-                void (^walk)(UIView *) = ^(UIView *root) {
-                    for (UIView *subview in root.subviews) {
-                        if ([[NSStringFromClass(subview.class)
-                              lowercaseString] containsString:@"altextmessagetableitemcell"]) {
-                            UICollectionViewCell *cell =
-                                (UICollectionViewCell *)subview;
-                            ZolaStyleBubblesInView(cell.contentView, cell);
-                        }
-
-                        walk(subview);
-                    }
-                };
-
-                walk(window);
+                ZolaRefreshBubblesInView(window);
             }
-        };
+        }];
 
         for (NSInteger i = 0; i < 30; i++) {
             dispatch_after(dispatch_time(DISPATCH_TIME_NOW,
