@@ -192,6 +192,7 @@ static UIView *ZolaFindViewWithClassName(UIView *root, NSString *className) {
         }
 
         UIView *found = ZolaFindViewWithClassName(subview, className);
+
         if (found) {
             return found;
         }
@@ -955,13 +956,6 @@ static void ZolaPresentSettings(void) {
 
         nav.modalPresentationStyle = UIModalPresentationPageSheet;
 
-        if (@available(iOS 15.0, *)) {
-            UISheetPresentationController *sheet = nav.sheetPresentationController;
-            sheet.detents = @[[UISheetPresentationControllerDetent mediumDetent],
-                              [UISheetPresentationControllerDetent largeDetent]];
-            sheet.prefersGrabberVisible = YES;
-        }
-
         [top presentViewController:nav animated:YES completion:nil];
     });
 }
@@ -1380,12 +1374,66 @@ static void ZolaRefreshChatBackgroundsInView(UIView *root) {
     }
 }
 
-static void ZolaRefreshVisibleChatBackgrounds(void) {
+%ctor {
+    NSBundle *bundle = [NSBundle mainBundle];
+
+    if (![bundle.bundleIdentifier isEqualToString:@"com.vng.zalo"]) {
+        return;
+    }
+
     dispatch_async(dispatch_get_main_queue(), ^{
-        for (UIWindow *window in ZolaAllWindows()) {
-            ZolaRefreshChatBackgroundsInView(window);
+        [ZolaThemeDocumentPickerDelegate shared];
+
+        [[NSNotificationCenter defaultCenter]
+            addObserverForName:@"ZolaThemeBackgroundChanged"
+                        object:nil
+                         queue:[NSOperationQueue mainQueue]
+                    usingBlock:^(__unused NSNotification *note) {
+            for (UIWindow *window in ZolaAllWindows()) {
+                ZolaRefreshChatBackgroundsInView(window);
+            }
+        }];
+
+        [[NSNotificationCenter defaultCenter]
+            addObserverForName:@"ZolaThemeBubbleChanged"
+                        object:nil
+                         queue:[NSOperationQueue mainQueue]
+                    usingBlock:^(__unused NSNotification *note) {
+            for (UIWindow *window in ZolaAllWindows()) {
+                void (^walk)(UIView *) = ^(UIView *root) {
+                    for (UIView *subview in root.subviews) {
+                        if ([[NSStringFromClass(subview.class)
+                              lowercaseString] containsString:@"altextmessagetableitemcell"]) {
+                            UICollectionViewCell *cell =
+                                (UICollectionViewCell *)subview;
+                            ZolaStyleBubblesInView(cell.contentView, cell);
+                        }
+
+                        walk(subview);
+                    }
+                };
+
+                walk(window);
+            }
+        };
+
+        for (NSInteger i = 0; i < 30; i++) {
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW,
+                                          (int64_t)(i * 0.5 * NSEC_PER_SEC)),
+                           dispatch_get_main_queue(), ^{
+                ZolaScanAndInstallPluginEntry();
+            });
+        }
+
+        Method original =
+            class_getInstanceMethod(UIApplication.class,
+                                    @selector(sendAction:to:from:forEvent:));
+        Method replacement =
+            class_getInstanceMethod(UIApplication.class,
+                                    @selector(zolaTheme_sendAction:to:from:forEvent:));
+
+        if (original && replacement) {
+            method_exchangeImplementations(original, replacement);
         }
     });
 }
-
-
