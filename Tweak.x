@@ -1400,22 +1400,9 @@ static void ZolaRefreshChatBackgroundsInView(UIView *root) {
                          queue:[NSOperationQueue mainQueue]
                     usingBlock:^(__unused NSNotification *note) {
             for (UIWindow *window in ZolaAllWindows()) {
-                void (^walk)(UIView *) = ^(UIView *root) {
-                    for (UIView *subview in root.subviews) {
-                        if ([[NSStringFromClass(subview.class)
-                              lowercaseString] containsString:@"altextmessagetableitemcell"]) {
-                            UICollectionViewCell *cell =
-                                (UICollectionViewCell *)subview;
-                            ZolaStyleBubblesInView(cell.contentView, cell);
-                        }
-
-                        walk(subview);
-                    }
-                };
-
-                walk(window);
+                ZolaRefreshBubblesInView(window);
             }
-        };
+        }];
 
         for (NSInteger i = 0; i < 30; i++) {
             dispatch_after(dispatch_time(DISPATCH_TIME_NOW,
