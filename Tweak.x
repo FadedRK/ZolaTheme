@@ -1064,8 +1064,6 @@ static ZolaCNNumberOfRowsIMP ZolaCNOriginalNumberOfRows = NULL;
 static ZolaCNCellForRowIMP ZolaCNOriginalCellForRow = NULL;
 static ZolaCNDidSelectIMP ZolaCNOriginalDidSelect = NULL;
 
-static NSInteger const ZolaCNThemeRowTag = 0x5A5452;
-
 static NSInteger ZolaCNThemeNumberOfRows(id self,
                                          SEL _cmd,
                                          UITableView *tableView) {
