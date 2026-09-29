@@ -960,118 +960,36 @@ static void ZolaPresentSettings(void) {
     });
 }
 
-#pragma mark - Plugin settings entry
+#pragma mark - Native Zalo Settings entry
 
-static UIView *ZolaFindPluginPanelInRoot(UIView *root) {
-    if (root.tag == ZolaAntiRecallPanelTag) {
-        return root;
-    }
+static NSInteger const ZolaThemeSettingsEntryTag = 0x5A5449;
 
-    for (UIView *subview in root.subviews) {
-        UIView *found = ZolaFindPluginPanelInRoot(subview);
-
-        if (found) {
-            return found;
-        }
-    }
-
-    return nil;
-}
-
-static UIView *ZolaFindMenuView(UIView *root) {
-    if (!root || root.hidden || root.alpha < 0.05) {
-        return nil;
-    }
-
-    CGRect bounds = root.bounds;
-    CGFloat bw = CGRectGetWidth(bounds);
-    CGFloat bh = CGRectGetHeight(bounds);
-
-    if (bw <= 0 || bh <= 0) {
-        return nil;
-    }
-
-    for (UIView *view in [root.subviews reverseObjectEnumerator]) {
-        if (view.hidden || view.alpha < 0.05 ||
-            view.tag == ZolaThemeFallbackPanelTag ||
-            view.tag == ZolaAntiRecallPanelTag) {
-            continue;
-        }
-
-        CGRect frame =
-            [view.superview convertRect:view.frame toView:root];
-
-        CGFloat width = CGRectGetWidth(frame);
-        CGFloat height = CGRectGetHeight(frame);
-        CGFloat x = CGRectGetMinX(frame);
-        CGFloat y = CGRectGetMinY(frame);
-
-        BOOL plausible =
-            width >= bw * 0.55 &&
-            width <= bw * 0.95 &&
-            height >= 250 &&
-            height <= bh * 0.55 &&
-            x >= 0 &&
-            x <= bw * 0.40 &&
-            y >= 0 &&
-            y <= bh * 0.35;
-
-        if (plausible) {
-            return view;
-        }
-
-        UIView *deeper = ZolaFindMenuView(view);
-
-        if (deeper) {
-            return deeper;
-        }
-    }
-
-    return nil;
-}
-
-@interface ZolaThemeEntryTarget : NSObject
+@interface ZolaThemeSettingsEntryTarget : NSObject
 + (instancetype)shared;
-- (void)openSettings:(UIButton *)sender;
+- (void)openSettings:(UIBarButtonItem *)sender;
 @end
 
-static void ZolaAddEntryToAntiRecallPanel(UIView *panel) {
-    if (!panel ||
-        [panel viewWithTag:ZolaThemeEntryButtonTag]) {
-        return;
+static BOOL ZolaLooksLikeSettingsViewController(UIViewController *vc) {
+    if (!vc) {
+        return NO;
     }
 
-    CGFloat width = CGRectGetWidth(panel.bounds);
-    CGRect frame = panel.frame;
-    frame.size.height = MAX(frame.size.height, 142.0);
-    panel.frame = frame;
-    panel.clipsToBounds = YES;
+    NSString *className =
+        NSStringFromClass(vc.class).lowercaseString;
 
-    UIButton *button =
-        [UIButton buttonWithType:UIButtonTypeSystem];
+    NSString *title =
+        (vc.navigationItem.title ?: vc.title).lowercaseString;
 
-    button.tag = ZolaThemeEntryButtonTag;
-    button.frame = CGRectMake(12, 94, width - 24, 38);
-    button.contentHorizontalAlignment =
-        UIControlContentHorizontalAlignmentLeft;
-
-    [button setTitle:@"ZolaTheme  ·  气泡与聊天背景"
-            forState:UIControlStateNormal];
-
-    button.titleLabel.font =
-        [UIFont systemFontOfSize:13 weight:UIFontWeightMedium];
-
-    [button addTarget:[ZolaThemeEntryTarget shared]
-               action:@selector(openSettings:)
-     forControlEvents:UIControlEventTouchUpInside];
-
-    [panel addSubview:button];
+    return [className containsString:@"setting"] ||
+           [title isEqualToString:@"设置"] ||
+           [title isEqualToString:@"settings"] ||
+           [title isEqualToString:@"cài đặt"];
 }
 
-@implementation ZolaThemeEntryTarget
+@implementation ZolaThemeSettingsEntryTarget
 
 + (instancetype)shared {
-    static ZolaThemeEntryTarget *shared;
+    static ZolaThemeSettingsEntryTarget *shared;
     static dispatch_once_t onceToken;
 
     dispatch_once(&onceToken, ^{
@@ -1081,131 +999,77 @@ static void ZolaAddEntryToAntiRecallPanel(UIView *panel) {
     return shared;
 }
 
-- (void)openSettings:(UIButton *)sender {
+- (void)openSettings:(__unused UIBarButtonItem *)sender {
     ZolaPresentSettings();
 }
 
 @end
 
-static void ZolaAddFallbackPluginPanel(UIView *menu) {
-    if (!menu || !menu.window ||
-        [menu.window viewWithTag:ZolaThemeFallbackPanelTag]) {
+static void ZolaInstallNativeSettingsEntry(UIViewController *vc) {
+    if (!ZolaLooksLikeSettingsViewController(vc)) {
         return;
     }
 
-    UIWindow *window = menu.window;
-    CGRect menuRect =
-        [menu.superview convertRect:menu.frame toView:window];
+    NSMutableArray<UIBarButtonItem *> *items =
+        [(vc.navigationItem.rightBarButtonItems ?: @[]) mutableCopy];
 
-    CGFloat screenWidth = CGRectGetWidth(window.bounds);
-    CGFloat screenHeight = CGRectGetHeight(window.bounds);
-
-    CGFloat width = MIN(CGRectGetWidth(menuRect), screenWidth - CGRectGetMinX(menuRect) - 10.0);
-    CGFloat height = 78.0;
-    CGFloat x = CGRectGetMinX(menuRect);
-    CGFloat belowY = CGRectGetMaxY(menuRect) + 6.0;
-
-    CGFloat y = belowY;
-
-    if (belowY + height > screenHeight) {
-        y = MAX(8.0, CGRectGetMinY(menuRect) - height - 6.0);
+    for (UIBarButtonItem *item in items) {
+        if (item.tag == ZolaThemeSettingsEntryTag) {
+            return;
+        }
     }
 
-    if (width < 180.0 || y < 0.0 || y + height > screenHeight) {
-        return;
-    }
+    UIBarButtonItem *item =
+        [[UIBarButtonItem alloc]
+            initWithTitle:@"ZolaTheme"
+                  style:UIBarButtonItemStylePlain
+                 target:[ZolaThemeSettingsEntryTarget shared]
+                 action:@selector(openSettings:)];
 
-    UIView *panel =
-        [[UIView alloc] initWithFrame:CGRectMake(x, y, width, height)];
+    item.tag = ZolaThemeSettingsEntryTag;
+    [items addObject:item];
 
-    panel.tag = ZolaThemeFallbackPanelTag;
-    panel.backgroundColor = UIColor.secondarySystemBackgroundColor;
-    panel.layer.cornerRadius = 14.0;
-    panel.layer.masksToBounds = YES;
-
-    UILabel *title =
-        [[UILabel alloc]
-            initWithFrame:CGRectMake(16, 7, width - 32, 24)];
-
-    title.text = @"ZolaTheme";
-    title.font =
-        [UIFont systemFontOfSize:16 weight:UIFontWeightMedium];
-    title.textColor = UIColor.labelColor;
-    [panel addSubview:title];
-
-    UIButton *button =
-        [UIButton buttonWithType:UIButtonTypeSystem];
-
-    button.frame = CGRectMake(12, 34, width - 24, 36);
-    button.contentHorizontalAlignment =
-        UIControlContentHorizontalAlignmentLeft;
-
-    [button setTitle:@"气泡与聊天背景设置"
-            forState:UIControlStateNormal];
-
-    button.titleLabel.font =
-        [UIFont systemFontOfSize:13 weight:UIFontWeightMedium];
-
-    [button addTarget:[ZolaThemeEntryTarget shared]
-               action:@selector(openSettings:)
-     forControlEvents:UIControlEventTouchUpInside];
-
-    [panel addSubview:button];
-
-    [window addSubview:panel];
+    vc.navigationItem.rightBarButtonItems = items;
 }
 
-static void ZolaScanAndInstallPluginEntry(void) {
+static void ZolaThemeViewDidAppear(UIViewController *self,
+                                   SEL _cmd,
+                                   BOOL animated) {
+    SEL alias = sel_registerName("zolaTheme_original_viewDidAppear:");
+
+    void (*orig)(id, SEL, BOOL) =
+        (void (*)(id, SEL, BOOL))[self methodForSelector:alias];
+
+    if (orig) {
+        orig(self, alias, animated);
+    }
+
     dispatch_async(dispatch_get_main_queue(), ^{
-        for (UIWindow *window in ZolaAllWindows()) {
-            UIView *antiRecallPanel =
-                ZolaFindPluginPanelInRoot(window);
-
-            if (antiRecallPanel) {
-                ZolaAddEntryToAntiRecallPanel(antiRecallPanel);
-                return;
-            }
-        }
-
-        for (UIWindow *window in ZolaAllWindows()) {
-            UIView *menu = ZolaFindMenuView(window);
-
-            if (menu) {
-                ZolaAddFallbackPluginPanel(menu);
-                return;
-            }
-        }
+        ZolaInstallNativeSettingsEntry(self);
     });
 }
 
-@interface UIApplication (ZolaThemePluginMenu)
-- (BOOL)zolaTheme_sendAction:(SEL)action
-                          to:(id)target
-                        from:(id)sender
-                    forEvent:(UIEvent *)event;
-@end
+static void ZolaThemeInstallSettingsHook(void) {
+    Class cls = UIViewController.class;
+    SEL selector = @selector(viewDidAppear:);
+    SEL alias = sel_registerName("zolaTheme_original_viewDidAppear:");
 
-@implementation UIApplication (ZolaThemePluginMenu)
+    Method method =
+        class_getInstanceMethod(cls, selector);
 
-- (BOOL)zolaTheme_sendAction:(SEL)action
-                          to:(id)target
-                        from:(id)sender
-                    forEvent:(UIEvent *)event {
-    BOOL result =
-        [self zolaTheme_sendAction:action
-                                 to:target
-                               from:sender
-                           forEvent:event];
+    if (!method ||
+        class_getInstanceMethod(cls, alias)) {
+        return;
+    }
 
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.15 * NSEC_PER_SEC)),
-                   dispatch_get_main_queue(), ^{
-        ZolaScanAndInstallPluginEntry();
-    });
+    class_addMethod(cls,
+                    alias,
+                    method_getImplementation(method),
+                    method_getTypeEncoding(method));
 
-    return result;
+    method_setImplementation(method,
+                             (IMP)ZolaThemeViewDidAppear);
 }
-
-@end
 
 #pragma mark - Full transparency
 
@@ -1404,23 +1268,6 @@ static void ZolaRefreshChatBackgroundsInView(UIView *root) {
             }
         }];
 
-        for (NSInteger i = 0; i < 30; i++) {
-            dispatch_after(dispatch_time(DISPATCH_TIME_NOW,
-                                          (int64_t)(i * 0.5 * NSEC_PER_SEC)),
-                           dispatch_get_main_queue(), ^{
-                ZolaScanAndInstallPluginEntry();
-            });
-        }
-
-        Method original =
-            class_getInstanceMethod(UIApplication.class,
-                                    @selector(sendAction:to:from:forEvent:));
-        Method replacement =
-            class_getInstanceMethod(UIApplication.class,
-                                    @selector(zolaTheme_sendAction:to:from:forEvent:));
-
-        if (original && replacement) {
-            method_exchangeImplementations(original, replacement);
-        }
+        ZolaThemeInstallSettingsHook();
     });
 }
