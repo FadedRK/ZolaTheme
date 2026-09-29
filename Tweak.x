@@ -10,9 +10,6 @@ static NSString * const ZolaGlobalBackgroundPathKey = @"ZolaThemeGlobalBackgroun
 static NSString * const ZolaPerChatBackgroundMapKey = @"ZolaThemePerChatBackgroundMap";
 static NSString * const ZolaGlobalBackgroundEnabledKey = @"ZolaThemeGlobalBackgroundEnabled";
 
-static const NSInteger ZolaAntiRecallPanelTag = 0x5A4152;
-static const NSInteger ZolaThemeEntryButtonTag = 0x5A5448;
-static const NSInteger ZolaThemeFallbackPanelTag = 0x5A5449;
 
 static char kZolaCustomBackgroundViewKey;
 static char kZolaAppliedBubblePathKey;
