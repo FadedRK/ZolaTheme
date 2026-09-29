@@ -1211,13 +1211,6 @@ static void ZolaInstallZolaCNSettingsEntry(void) {
         return;
     }
 
-    // Do not duplicate an existing theme entry supplied by a newer ZolaCN.
-    NSArray *instances = nil;
-    if ([cls instancesRespondToSelector:@selector(tableView:)]) {
-        // Instances are collected by the caller below; runtime class check only here.
-    }
-
-    installed = YES;
 
     ZolaCNOriginalNumberOfRows =
         (ZolaCNNumberOfRowsIMP)method_getImplementation(rowsMethod);
@@ -1227,6 +1220,13 @@ static void ZolaInstallZolaCNSettingsEntry(void) {
 
     ZolaCNOriginalDidSelect =
         (ZolaCNDidSelectIMP)method_getImplementation(selectMethod);
+
+    // The existing-cell check needs a live table. The first settings screen
+    // will call this installer again through the retry loop; at that point
+    // the original implementations are captured below. We still install our
+    // compatibility row for the three-row ZolaCN version shown in use.
+
+    installed = YES;
 
     method_setImplementation(rowsMethod,
                              (IMP)ZolaCNThemeNumberOfRows);
