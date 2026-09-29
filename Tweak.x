@@ -957,14 +957,28 @@ static void ZolaPresentSettings(void) {
     });
 }
 
-#pragma mark - Native Zalo Settings entry
+#pragma mark - Native Zalo / ZolaCN Settings entry
 
 static NSInteger const ZolaThemeSettingsEntryTag = 0x5A5449;
+static NSInteger const ZolaCNThemeRowTag = 0x5A5452;
 
 @interface ZolaThemeSettingsEntryTarget : NSObject
 + (instancetype)shared;
 - (void)openSettings:(UIBarButtonItem *)sender;
 @end
+
+static BOOL ZolaStringLooksLikeSettings(NSString *value) {
+    if (value.length == 0) {
+        return NO;
+    }
+
+    NSString *title = value.lowercaseString;
+
+    return [title containsString:@"setting"] ||
+           [title isEqualToString:@"设置"] ||
+           [title isEqualToString:@"cài đặt"] ||
+           [title isEqualToString:@"cài đặt chung"];
+}
 
 static BOOL ZolaLooksLikeSettingsViewController(UIViewController *vc) {
     if (!vc) {
@@ -975,12 +989,23 @@ static BOOL ZolaLooksLikeSettingsViewController(UIViewController *vc) {
         NSStringFromClass(vc.class).lowercaseString;
 
     NSString *title =
-        (vc.navigationItem.title ?: vc.title).lowercaseString;
+        (vc.navigationItem.title ?: vc.title);
 
-    return [className containsString:@"setting"] ||
-           [title isEqualToString:@"设置"] ||
-           [title isEqualToString:@"settings"] ||
-           [title isEqualToString:@"cài đặt"];
+    if ([className containsString:@"setting"] ||
+        ZolaStringLooksLikeSettings(title)) {
+        return YES;
+    }
+
+    UINavigationController *navigationController =
+        vc.navigationController;
+
+    UINavigationBar *bar = navigationController.navigationBar;
+
+    if (ZolaStringLooksLikeSettings(bar.topItem.title)) {
+        return YES;
+    }
+
+    return NO;
 }
 
 @implementation ZolaThemeSettingsEntryTarget
@@ -1029,27 +1054,176 @@ static void ZolaInstallNativeSettingsEntry(UIViewController *vc) {
     vc.navigationItem.rightBarButtonItems = items;
 }
 
+#pragma mark - ZolaCN compatibility
+
+typedef NSInteger (*ZolaCNNumberOfRowsIMP)(id, SEL, UITableView *);
+typedef UITableViewCell *(*ZolaCNCellForRowIMP)(id, SEL, UITableView *, NSIndexPath *);
+typedef void (*ZolaCNDidSelectIMP)(id, SEL, UITableView *, NSIndexPath *);
+
+static ZolaCNNumberOfRowsIMP ZolaCNOriginalNumberOfRows = NULL;
+static ZolaCNCellForRowIMP ZolaCNOriginalCellForRow = NULL;
+static ZolaCNDidSelectIMP ZolaCNOriginalDidSelect = NULL;
+
+static NSInteger ZolaCNThemeNumberOfRows(id self,
+                                         SEL _cmd,
+                                         UITableView *tableView) {
+    if (!ZolaCNOriginalNumberOfRows) {
+        return 0;
+    }
+
+    NSInteger count =
+        ZolaCNOriginalNumberOfRows(self, _cmd, tableView);
+
+    // ZolaCN's settings controller is a single-section table.
+    return count + 1;
+}
+
+static UITableViewCell *ZolaCNThemeCellForRow(id self,
+                                              SEL _cmd,
+                                              UITableView *tableView,
+                                              NSIndexPath *indexPath) {
+    NSInteger originalCount = 0;
+
+    if (ZolaCNOriginalNumberOfRows) {
+        originalCount =
+            ZolaCNOriginalNumberOfRows(self,
+                                       @selector(numberOfRowsInSection:),
+                                       tableView);
+    }
+
+    if (indexPath.section == 0 &&
+        indexPath.row == originalCount) {
+
+        static NSString *reuseIdentifier = @"ZolaCNThemeCompatCell";
+
+        UITableViewCell *cell =
+            [tableView dequeueReusableCellWithIdentifier:reuseIdentifier];
+
+        if (!cell) {
+            cell =
+                [[UITableViewCell alloc]
+                    initWithStyle:UITableViewCellStyleValue1
+                 reuseIdentifier:reuseIdentifier];
+        }
+
+        cell.tag = ZolaCNThemeRowTag;
+        cell.accessoryView = nil;
+        cell.accessoryType =
+            UITableViewCellAccessoryDisclosureIndicator;
+        cell.textLabel.text = @"主题美化";
+
+        return cell;
+    }
+
+    if (!ZolaCNOriginalCellForRow) {
+        return nil;
+    }
+
+    return ZolaCNOriginalCellForRow(self, _cmd, tableView, indexPath);
+}
+
+static void ZolaCNThemeDidSelect(id self,
+                                 SEL _cmd,
+                                 UITableView *tableView,
+                                 NSIndexPath *indexPath) {
+    NSInteger originalCount = 0;
+
+    if (ZolaCNOriginalNumberOfRows) {
+        originalCount =
+            ZolaCNOriginalNumberOfRows(self,
+                                       @selector(numberOfRowsInSection:),
+                                       tableView);
+    }
+
+    if (indexPath.section == 0 &&
+        indexPath.row == originalCount) {
+        [tableView deselectRowAtIndexPath:indexPath animated:YES];
+        ZolaPresentSettings();
+        return;
+    }
+
+    if (ZolaCNOriginalDidSelect) {
+        ZolaCNOriginalDidSelect(self, _cmd, tableView, indexPath);
+    }
+}
+
+static void ZolaInstallZolaCNSettingsEntry(void) {
+    Class cls = objc_getClass("ZARSettingsViewController");
+
+    if (!cls) {
+        return;
+    }
+
+    Method rowsMethod =
+        class_getInstanceMethod(cls,
+                                @selector(numberOfRowsInSection:));
+
+    Method cellMethod =
+        class_getInstanceMethod(cls,
+                                @selector(tableView:cellForRowAtIndexPath:));
+
+    Method selectMethod =
+        class_getInstanceMethod(cls,
+                                @selector(tableView:didSelectRowAtIndexPath:));
+
+    if (!rowsMethod || !cellMethod || !selectMethod) {
+        return;
+    }
+
+    static BOOL installed = NO;
+
+    if (installed) {
+        return;
+    }
+
+    installed = YES;
+
+    ZolaCNOriginalNumberOfRows =
+        (ZolaCNNumberOfRowsIMP)method_getImplementation(rowsMethod);
+
+    ZolaCNOriginalCellForRow =
+        (ZolaCNCellForRowIMP)method_getImplementation(cellMethod);
+
+    ZolaCNOriginalDidSelect =
+        (ZolaCNDidSelectIMP)method_getImplementation(selectMethod);
+
+    method_setImplementation(rowsMethod,
+                             (IMP)ZolaCNThemeNumberOfRows);
+
+    method_setImplementation(cellMethod,
+                             (IMP)ZolaCNThemeCellForRow);
+
+    method_setImplementation(selectMethod,
+                             (IMP)ZolaCNThemeDidSelect);
+}
+
 static void ZolaThemeViewDidAppear(UIViewController *self,
                                    SEL _cmd,
                                    BOOL animated) {
-    SEL alias = sel_registerName("zolaTheme_original_viewDidAppear:");
+    SEL alias =
+        sel_registerName("zolaTheme_original_viewDidAppear:");
 
     void (*orig)(id, SEL, BOOL) =
-        (void (*)(id, SEL, BOOL))[self methodForSelector:alias];
+        (void (*)(id, SEL, BOOL))
+        [self methodForSelector:alias];
 
     if (orig) {
         orig(self, alias, animated);
     }
 
     dispatch_async(dispatch_get_main_queue(), ^{
+        ZolaInstallZolaCNSettingsEntry();
         ZolaInstallNativeSettingsEntry(self);
     });
 }
 
 static void ZolaThemeInstallSettingsHook(void) {
+    ZolaInstallZolaCNSettingsEntry();
+
     Class cls = UIViewController.class;
     SEL selector = @selector(viewDidAppear:);
-    SEL alias = sel_registerName("zolaTheme_original_viewDidAppear:");
+    SEL alias =
+        sel_registerName("zolaTheme_original_viewDidAppear:");
 
     Method method =
         class_getInstanceMethod(cls, selector);
