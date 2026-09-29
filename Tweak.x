@@ -1066,41 +1066,6 @@ static ZolaCNDidSelectIMP ZolaCNOriginalDidSelect = NULL;
 
 static NSInteger const ZolaCNThemeRowTag = 0x5A5452;
 
-static BOOL ZolaCNHasExistingThemeRow(id self,
-                                      UITableView *tableView,
-                                      NSInteger count) {
-    if (!ZolaCNOriginalCellForRow) {
-        return NO;
-    }
-
-    for (NSInteger row = 0; row < count; row++) {
-        NSIndexPath *indexPath =
-            [NSIndexPath indexPathForRow:row inSection:0];
-
-        UITableViewCell *cell =
-            ZolaCNOriginalCellForRow(self,
-                                     @selector(tableView:cellForRowAtIndexPath:),
-                                     tableView,
-                                     indexPath);
-
-        NSString *title =
-            [cell.textLabel.text stringByTrimmingCharactersInSet:
-                [NSCharacterSet whitespaceAndNewlineCharacterSet]];
-
-        NSString *lower =
-            title.lowercaseString;
-
-        if ([lower isEqualToString:@"主题美化"] ||
-            [lower isEqualToString:@"themes & appearance"] ||
-            [lower isEqualToString:@"chủ đề & giao diện"] ||
-            [lower containsString:@"主题美化"]) {
-            return YES;
-        }
-    }
-
-    return NO;
-}
-
 static NSInteger ZolaCNThemeNumberOfRows(id self,
                                          SEL _cmd,
                                          UITableView *tableView) {
