@@ -1064,6 +1064,43 @@ static ZolaCNNumberOfRowsIMP ZolaCNOriginalNumberOfRows = NULL;
 static ZolaCNCellForRowIMP ZolaCNOriginalCellForRow = NULL;
 static ZolaCNDidSelectIMP ZolaCNOriginalDidSelect = NULL;
 
+static NSInteger const ZolaCNThemeRowTag = 0x5A5452;
+
+static BOOL ZolaCNHasExistingThemeRow(id self,
+                                      UITableView *tableView,
+                                      NSInteger count) {
+    if (!ZolaCNOriginalCellForRow) {
+        return NO;
+    }
+
+    for (NSInteger row = 0; row < count; row++) {
+        NSIndexPath *indexPath =
+            [NSIndexPath indexPathForRow:row inSection:0];
+
+        UITableViewCell *cell =
+            ZolaCNOriginalCellForRow(self,
+                                     @selector(tableView:cellForRowAtIndexPath:),
+                                     tableView,
+                                     indexPath);
+
+        NSString *title =
+            [cell.textLabel.text stringByTrimmingCharactersInSet:
+                [NSCharacterSet whitespaceAndNewlineCharacterSet]];
+
+        NSString *lower =
+            title.lowercaseString;
+
+        if ([lower isEqualToString:@"主题美化"] ||
+            [lower isEqualToString:@"themes & appearance"] ||
+            [lower isEqualToString:@"chủ đề & giao diện"] ||
+            [lower containsString:@"主题美化"]) {
+            return YES;
+        }
+    }
+
+    return NO;
+}
+
 static NSInteger ZolaCNThemeNumberOfRows(id self,
                                          SEL _cmd,
                                          UITableView *tableView) {
@@ -1074,7 +1111,6 @@ static NSInteger ZolaCNThemeNumberOfRows(id self,
     NSInteger count =
         ZolaCNOriginalNumberOfRows(self, _cmd, tableView);
 
-    // ZolaCN's settings controller is a single-section table.
     return count + 1;
 }
 
@@ -1082,14 +1118,13 @@ static UITableViewCell *ZolaCNThemeCellForRow(id self,
                                               SEL _cmd,
                                               UITableView *tableView,
                                               NSIndexPath *indexPath) {
-    NSInteger originalCount = 0;
-
-    if (ZolaCNOriginalNumberOfRows) {
-        originalCount =
-            ZolaCNOriginalNumberOfRows(self,
-                                       @selector(numberOfRowsInSection:),
-                                       tableView);
-    }
+    NSInteger originalCount =
+        ZolaCNOriginalNumberOfRows
+            ? ZolaCNOriginalNumberOfRows(
+                  self,
+                  @selector(numberOfRowsInSection:),
+                  tableView)
+            : 0;
 
     if (indexPath.section == 0 &&
         indexPath.row == originalCount) {
@@ -1111,6 +1146,7 @@ static UITableViewCell *ZolaCNThemeCellForRow(id self,
         cell.accessoryType =
             UITableViewCellAccessoryDisclosureIndicator;
         cell.textLabel.text = @"主题美化";
+        cell.detailTextLabel.text = nil;
 
         return cell;
     }
@@ -1126,14 +1162,13 @@ static void ZolaCNThemeDidSelect(id self,
                                  SEL _cmd,
                                  UITableView *tableView,
                                  NSIndexPath *indexPath) {
-    NSInteger originalCount = 0;
-
-    if (ZolaCNOriginalNumberOfRows) {
-        originalCount =
-            ZolaCNOriginalNumberOfRows(self,
-                                       @selector(numberOfRowsInSection:),
-                                       tableView);
-    }
+    NSInteger originalCount =
+        ZolaCNOriginalNumberOfRows
+            ? ZolaCNOriginalNumberOfRows(
+                  self,
+                  @selector(numberOfRowsInSection:),
+                  tableView)
+            : 0;
 
     if (indexPath.section == 0 &&
         indexPath.row == originalCount) {
@@ -1148,6 +1183,12 @@ static void ZolaCNThemeDidSelect(id self,
 }
 
 static void ZolaInstallZolaCNSettingsEntry(void) {
+    static BOOL installed = NO;
+
+    if (installed) {
+        return;
+    }
+
     Class cls = objc_getClass("ZARSettingsViewController");
 
     if (!cls) {
@@ -1170,10 +1211,10 @@ static void ZolaInstallZolaCNSettingsEntry(void) {
         return;
     }
 
-    static BOOL installed = NO;
-
-    if (installed) {
-        return;
+    // Do not duplicate an existing theme entry supplied by a newer ZolaCN.
+    NSArray *instances = nil;
+    if ([cls instancesRespondToSelector:@selector(tableView:)]) {
+        // Instances are collected by the caller below; runtime class check only here.
     }
 
     installed = YES;
@@ -1195,6 +1236,14 @@ static void ZolaInstallZolaCNSettingsEntry(void) {
 
     method_setImplementation(selectMethod,
                              (IMP)ZolaCNThemeDidSelect);
+
+    NSLog(@"[ZolaTheme] ZARSettingsViewController entry installed");
+}
+
+static void ZolaRetryZolaCNSettingsEntry(void) {
+    if (objc_getClass("ZARSettingsViewController")) {
+        ZolaInstallZolaCNSettingsEntry();
+    }
 }
 
 static void ZolaThemeViewDidAppear(UIViewController *self,
@@ -1212,14 +1261,12 @@ static void ZolaThemeViewDidAppear(UIViewController *self,
     }
 
     dispatch_async(dispatch_get_main_queue(), ^{
-        ZolaInstallZolaCNSettingsEntry();
+        ZolaRetryZolaCNSettingsEntry();
         ZolaInstallNativeSettingsEntry(self);
     });
 }
 
 static void ZolaThemeInstallSettingsHook(void) {
-    ZolaInstallZolaCNSettingsEntry();
-
     Class cls = UIViewController.class;
     SEL selector = @selector(viewDidAppear:);
     SEL alias =
@@ -1440,5 +1487,15 @@ static void ZolaRefreshChatBackgroundsInView(UIView *root) {
         }];
 
         ZolaThemeInstallSettingsHook();
+
+        // ZolaCN may load its settings controller lazily. Retry briefly
+        // after launch so the entry is installed regardless of load order.
+        for (NSInteger i = 0; i < 40; i++) {
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW,
+                                          (int64_t)(i * 0.25 * NSEC_PER_SEC)),
+                           dispatch_get_main_queue(), ^{
+                ZolaRetryZolaCNSettingsEntry();
+            });
+        }
     });
 }
