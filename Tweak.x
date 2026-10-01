@@ -397,8 +397,7 @@ didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
     NSString *path =
         ZolaCopySelectedImage(sourceURL, @"background", stableKey);
 
-    if (path.length == 0) {
-        return;
+    if (path.length == 0) {        return;
     }
 
     if (ZolaGlobalBackgroundEnabled()) {
@@ -797,8 +796,7 @@ static void ZolaStyleBubblesInView(UIView *view, UIView *cell) {
                   forState:UIControlStateNormal];
     bubbleButton.titleLabel.font =
         [UIFont systemFontOfSize:17 weight:UIFontWeightMedium];
-    bubbleButton.contentHorizontalAlignment =
-        UIControlContentHorizontalAlignmentLeft;
+    bubbleButton.contentHorizontalAlignment =        UIControlContentHorizontalAlignmentLeft;
     bubbleButton.translatesAutoresizingMaskIntoConstraints = NO;
     [bubbleButton addTarget:self
                      action:@selector(selectBubble)
@@ -1197,8 +1195,7 @@ static void ZolaInstallZolaCNSettingsEntry(void) {
     method_setImplementation(cellMethod,
                              (IMP)ZolaCNThemeCellForRow);
 
-    method_setImplementation(selectMethod,
-                             (IMP)ZolaCNThemeDidSelect);
+    method_setImplementation(selectMethod,                             (IMP)ZolaCNThemeDidSelect);
 
     NSLog(@"[ZolaTheme] ZARSettingsViewController entry installed");
 }
@@ -1408,15 +1405,10 @@ static void ZolaDumpKBChatInputView(UIView *inputView) {
     %orig;
 
     UIView *toolbarView = (UIView *)self;
-
     toolbarView.backgroundColor = UIColor.clearColor;
 
     for (UIView *subview in toolbarView.subviews) {
         NSString *className = NSStringFromClass(subview.class).lowercaseString;
-
-        if ([className isEqualToString:@"hpgrowingtextview"]) {
-            subview.backgroundColor = UIColor.clearColor;
-        }
 
         if ([className isEqualToString:@"_uibarbbackground"] ||
             [className containsString:@"blur"]) {
@@ -1431,6 +1423,30 @@ static void ZolaDumpKBChatInputView(UIView *inputView) {
             subview.alpha = 0.0;
         }
     }
+}
+
+%end
+
+%hook HPGrowingTextView
+
+- (void)setBackgroundColor:(UIColor *)color {
+    %orig(UIColor.clearColor);
+}
+
+%end
+
+%hook MyTextView
+
+- (void)setBackgroundColor:(UIColor *)color {
+    %orig(UIColor.clearColor);
+}
+
+%end
+
+%hook HPTextViewInternal
+
+- (void)setBackgroundColor:(UIColor *)color {
+    %orig(UIColor.clearColor);
 }
 
 %end
