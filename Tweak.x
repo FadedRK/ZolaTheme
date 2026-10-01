@@ -1296,30 +1296,66 @@ static void ZolaThemeInstallSettingsHook(void) {
 - (void)layoutSubviews {
     %orig;
 
-    // Keep the Zalo input control itself unchanged. The surrounding bottom
-    // container can be transparent, but the actual editor / composer should
-    // retain its native background, border and translucency.
     UIView *inputView = (UIView *)self;
+
+    // Save the native appearance of the actual composer/editor controls
+    // before making the surrounding input container transparent.
+    NSMutableArray *editorViews = [NSMutableArray array];
+    NSMutableArray *backgrounds = [NSMutableArray array];
+
+    NSMutableArray *stack = [NSMutableArray arrayWithObject:inputView];
+    while (stack.count) {
+        UIView *view = stack.lastObject;
+        [stack removeLastObject];
+
+        if (view != inputView) {
+            NSString *className = NSStringFromClass(view.class).lowercaseString;
+
+            BOOL editor =
+                [className containsString:@"textview"] ||
+                [className containsString:@"textfield"] ||
+                [className containsString:@"inputfield"] ||
+                [className containsString:@"composer"] ||
+                [className containsString:@"editor"];
+
+            if (editor) {
+                [editorViews addObject:view];
+                [backgrounds addObject:view.backgroundColor ?: UIColor.clearColor];
+            }
+        }
+
+        for (UIView *subview in view.subviews) {
+            [stack addObject:subview];
+        }
+    }
+
+    // The whole bottom input container is transparent.
+    inputView.backgroundColor = UIColor.clearColor;
+    inputView.layer.backgroundColor = UIColor.clearColor.CGColor;
+    inputView.layer.opaque = NO;
 
     for (UIView *view in inputView.subviews) {
         NSString *className = NSStringFromClass(view.class).lowercaseString;
 
-        BOOL looksLikeEditor =
-            [className containsString:@"textview"] ||
-            [className containsString:@"textfield"] ||
-            [className containsString:@"inputfield"] ||
-            [className containsString:@"composer"] ||
-            [className containsString:@"editor"];
-
-        if (looksLikeEditor) {
-            continue;
-        }
-
         if ([className isEqualToString:@"_uibarbbackground"] ||
+            [className containsString:@"blur"] ||
             [view isKindOfClass:[UIImageView class]]) {
             view.hidden = YES;
             view.alpha = 0.0;
         }
+    }
+
+    // Restore only the real text composer/editor so the input box itself
+    // remains native while everything around it stays transparent.
+    for (NSUInteger i = 0; i < editorViews.count; i++) {
+        UIView *editor = editorViews[i];
+        UIColor *nativeColor = backgrounds[i];
+
+        editor.hidden = NO;
+        editor.alpha = 1.0;
+        editor.backgroundColor = nativeColor;
+        editor.layer.backgroundColor = nativeColor.CGColor;
+        editor.layer.opaque = nativeColor.alpha >= 0.999;
     }
 }
 
