@@ -1355,7 +1355,7 @@ static void ZolaThemeInstallSettingsHook(void) {
         editor.alpha = 1.0;
         editor.backgroundColor = nativeColor;
         editor.layer.backgroundColor = nativeColor.CGColor;
-        editor.layer.opaque = nativeColor.alpha >= 0.999;
+        editor.layer.opaque = CGColorGetAlpha(nativeColor.CGColor) >= 0.999;
     }
 }
 
