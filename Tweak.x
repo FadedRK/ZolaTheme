@@ -1384,6 +1384,13 @@ static void ZolaThemeInstallSettingsHook(void) {
             view.hidden = YES;
             view.alpha = 0.0;
         }
+
+        if ([className isEqualToString:@"HPGrowingTextView"]) {
+            if (view.backgroundColor != UIColor.clearColor) {
+                view.backgroundColor = UIColor.clearColor;
+            }
+        }
+
     }
 }
 
