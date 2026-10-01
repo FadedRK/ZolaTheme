@@ -1435,9 +1435,14 @@ static void ZolaInstallDumpGesture(UIView *view) {
     for (UIView *subview in toolbarView.subviews) {
         NSString *className = NSStringFromClass(subview.class).lowercaseString;
 
+        // The native composer itself is also fully transparent.
+        // Keep the text/cursor/content, remove only its background.
         if ([className isEqualToString:@"hpgrowingtextview"] ||
             [className isEqualToString:@"mytextview"] ||
             [className isEqualToString:@"hptextviewinternal"]) {
+            subview.backgroundColor = UIColor.clearColor;
+            subview.layer.backgroundColor = UIColor.clearColor.CGColor;
+            subview.layer.opaque = NO;
             continue;
         }
 
