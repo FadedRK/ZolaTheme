@@ -1340,22 +1340,6 @@ static void ZolaDumpKBChatInputView(UIView *inputView) {
 }
 @end
 
-static void ZolaInstallDumpGesture(UIView *view) {
-    if (!view) return;
-
-    for (UIGestureRecognizer *gesture in view.gestureRecognizers) {
-        if ([gesture.name isEqualToString:@"ZolaThemeViewDump"]) return;
-    }
-
-    UITapGestureRecognizer *gesture = [[UITapGestureRecognizer alloc] initWithTarget:[ZolaDumpGestureTarget class]
-                                                                               action:@selector(handleDump:)];
-    gesture.numberOfTapsRequired = 7;
-    gesture.numberOfTouchesRequired = 1;
-    gesture.cancelsTouchesInView = NO;
-    gesture.name = @"ZolaThemeViewDump";
-    [view addGestureRecognizer:gesture];
-}
-
 #pragma mark - Full transparency
 
 %hook _ZDSNavigationBarBackgroundView
