@@ -1389,6 +1389,8 @@ static void ZolaThemeInstallSettingsHook(void) {
             if (view.backgroundColor != UIColor.clearColor) {
                 view.backgroundColor = UIColor.clearColor;
             }
+            view.layer.backgroundColor = UIColor.clearColor.CGColor;
+            view.layer.opaque = NO;
         }
 
     }
