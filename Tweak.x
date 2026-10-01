@@ -1296,16 +1296,26 @@ static void ZolaThemeInstallSettingsHook(void) {
 - (void)layoutSubviews {
     %orig;
 
+    // Keep the Zalo input control itself unchanged. The surrounding bottom
+    // container can be transparent, but the actual editor / composer should
+    // retain its native background, border and translucency.
     UIView *inputView = (UIView *)self;
 
-    inputView.backgroundColor = UIColor.clearColor;
-    inputView.layer.backgroundColor = UIColor.clearColor.CGColor;
-    inputView.layer.opaque = NO;
-
     for (UIView *view in inputView.subviews) {
-        NSString *className = NSStringFromClass(view.class);
+        NSString *className = NSStringFromClass(view.class).lowercaseString;
 
-        if ([className isEqualToString:@"_UIBarBackground"] ||
+        BOOL looksLikeEditor =
+            [className containsString:@"textview"] ||
+            [className containsString:@"textfield"] ||
+            [className containsString:@"inputfield"] ||
+            [className containsString:@"composer"] ||
+            [className containsString:@"editor"];
+
+        if (looksLikeEditor) {
+            continue;
+        }
+
+        if ([className isEqualToString:@"_uibarbbackground"] ||
             [view isKindOfClass:[UIImageView class]]) {
             view.hidden = YES;
             view.alpha = 0.0;
@@ -1327,9 +1337,13 @@ static void ZolaThemeInstallSettingsHook(void) {
     toolbarView.layer.opaque = NO;
 
     for (UIView *view in toolbarView.subviews) {
-        NSString *className = NSStringFromClass(view.class);
+        NSString *className = NSStringFromClass(view.class).lowercaseString;
 
-        if ([className isEqualToString:@"_UIBarBackground"] ||
+        // Remove only toolbar/background chrome. Do not touch the chat
+        // composer/input view itself.
+        if ([className isEqualToString:@"_uibarbbackground"] ||
+            [className containsString:@"background"] ||
+            [className containsString:@"blur"] ||
             [view isKindOfClass:[UIImageView class]]) {
             view.hidden = YES;
             view.alpha = 0.0;
