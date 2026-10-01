@@ -1252,186 +1252,188 @@ static void ZolaThemeInstallSettingsHook(void) {
                              (IMP)ZolaThemeViewDidAppear);
 }
 
-#pragma mark - View hierarchy dump
-
-static NSString *ZolaViewDumpPath(void) {
-    NSString *documents = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES).firstObject;
-    return [documents stringByAppendingPathComponent:@"ZolaThemeViewDump.txt"];
-}
-
-static NSString *ZolaColorDescription(UIColor *color) {
-    if (!color) return @"(nil)";
-    CGFloat r = 0, g = 0, b = 0, a = 0;
-    if ([color getRed:&r green:&g blue:&b alpha:&a]) {
-        return [NSString stringWithFormat:@"rgba(%.3f, %.3f, %.3f, %.3f)", r, g, b, a];
-    }
-    CGFloat white = 0;
-    if ([color getWhite:&white alpha:&a]) {
-        return [NSString stringWithFormat:@"white(%.3f, %.3f)", white, a];
-    }
-    return [color description] ?: @"(unknown)";
-}
-
-static void ZolaAppendViewDump(NSMutableString *output, UIView *view, NSUInteger depth) {
-    if (!view) return;
-
-    NSMutableString *indent = [NSMutableString string];
-    for (NSUInteger i = 0; i < depth; i++) [indent appendString:@"  "];
-
-    NSString *className = NSStringFromClass(view.class);
-    NSString *bg = ZolaColorDescription(view.backgroundColor);
-    NSString *layerBG = view.layer.backgroundColor ? [CIColor colorWithCGColor:view.layer.backgroundColor].description : @"(nil)";
-
-    [output appendFormat:@"%@Class: %@\n", indent, className];
-    [output appendFormat:@"%@Frame: %@\n", indent, NSStringFromCGRect(view.frame)];
-    [output appendFormat:@"%@Bounds: %@\n", indent, NSStringFromCGRect(view.bounds)];
-    [output appendFormat:@"%@Hidden: %@  Alpha: %.3f  FirstResponder: %@\n", indent, view.hidden ? @"YES" : @"NO", view.alpha, [view isFirstResponder] ? @"YES" : @"NO"];
-    [output appendFormat:@"%@Background: %@\n", indent, bg];
-    [output appendFormat:@"%@Layer background: %@  Opaque: %@\n", indent, layerBG, view.layer.opaque ? @"YES" : @"NO"];
-
-    if ([view isKindOfClass:[UITextView class]]) {
-        UITextView *tv = (UITextView *)view;
-        [output appendFormat:@"%@>>> UITextView textLength=%lu editable=%@\n", indent, (unsigned long)tv.text.length, tv.editable ? @"YES" : @"NO"];
-    }
-    if ([view isKindOfClass:[UITextField class]]) {
-        UITextField *tf = (UITextField *)view;
-        [output appendFormat:@"%@>>> UITextField textLength=%lu enabled=%@\n", indent, (unsigned long)tf.text.length, tf.enabled ? @"YES" : @"NO"];
-    }
-
-    for (UIView *subview in view.subviews) {
-        ZolaAppendViewDump(output, subview, depth + 1);
-    }
-}
-
-static void ZolaDumpKBChatInputView(UIView *inputView) {
-    NSMutableString *output = [NSMutableString string];
-    [output appendString:@"ZolaTheme View Dump\n"];
-    [output appendFormat:@"Date: %@\n\n", [NSDate date]];
-    [output appendString:@"===== KBChatInputComponentView =====\n"];
-    ZolaAppendViewDump(output, inputView, 0);
-
-    NSString *path = ZolaViewDumpPath();
-    NSError *error = nil;
-    if (![output writeToFile:path atomically:YES encoding:NSUTF8StringEncoding error:&error]) {
-        NSLog(@"[ZolaTheme] View dump failed: %@", error);
-    } else {
-        NSLog(@"[ZolaTheme] View dump saved: %@", path);
-    }
-}
-
-@interface ZolaDumpGestureTarget : NSObject
-+ (void)handleDump:(UITapGestureRecognizer *)gesture;
-@end
-
-@implementation ZolaDumpGestureTarget
-+ (void)handleDump:(UITapGestureRecognizer *)gesture {
-    if (gesture.state != UIGestureRecognizerStateEnded) return;
-
-    ZolaDumpKBChatInputView(gesture.view);
-
-    UIViewController *vc = gesture.view.window.rootViewController;
-    while (vc.presentedViewController) vc = vc.presentedViewController;
-
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"ZolaTheme"
-                                                                   message:@"View dump 已保存到 Documents/ZolaThemeViewDump.txt"
-                                                            preferredStyle:UIAlertControllerStyleAlert];
-    [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
-    [vc presentViewController:alert animated:YES completion:nil];
-}
-@end
-
 #pragma mark - Full transparency
 
-// Exact classes identified by the #22 view hierarchy dump.
-// Keep text controls unhooked; clear them from the stable toolbar container.
+%hook _ZDSNavigationBarBackgroundView
 
-%hook KBChatInputComponentView
 - (void)layoutSubviews {
     %orig;
 
-    UIView *view = (UIView *)self;
-    view.backgroundColor = UIColor.clearColor;
-    view.layer.backgroundColor = UIColor.clearColor.CGColor;
-    view.layer.opaque = NO;
+    UIView *backgroundView = (UIView *)self;
+
+    backgroundView.backgroundColor = UIColor.clearColor;
+    backgroundView.layer.backgroundColor = UIColor.clearColor.CGColor;
+    backgroundView.layer.opaque = NO;
+    backgroundView.layer.contents = nil;
+
+    for (UIView *view in backgroundView.subviews) {
+        if ([view isKindOfClass:[UIImageView class]]) {
+            view.hidden = YES;
+            view.alpha = 0.0;
+        }
+    }
 }
+
+%end
+
+%hook UXNavigationBar
+
+- (void)layoutSubviews {
+    %orig;
+
+    UIView *barView = (UIView *)self;
+
+    barView.backgroundColor = UIColor.clearColor;
+    barView.layer.backgroundColor = UIColor.clearColor.CGColor;
+    barView.layer.opaque = NO;
+    barView.layer.shadowOpacity = 0.0;
+}
+
+%end
+
+%hook KBChatInputComponentView
+
+- (void)layoutSubviews {
+    %orig;
+
+    UIView *inputView = (UIView *)self;
+
+    // Save the native appearance of the actual composer/editor controls
+    // before making the surrounding input container transparent.
+    NSMutableArray *editorViews = [NSMutableArray array];
+    NSMutableArray *backgrounds = [NSMutableArray array];
+
+    NSMutableArray *stack = [NSMutableArray arrayWithObject:inputView];
+    while (stack.count) {
+        UIView *view = stack.lastObject;
+        [stack removeLastObject];
+
+        if (view != inputView) {
+            NSString *className = NSStringFromClass(view.class).lowercaseString;
+
+            BOOL editor =
+                [className containsString:@"textview"] ||
+                [className containsString:@"textfield"] ||
+                [className containsString:@"inputfield"] ||
+                [className containsString:@"composer"] ||
+                [className containsString:@"editor"];
+
+            if (editor) {
+                [editorViews addObject:view];
+                [backgrounds addObject:view.backgroundColor ?: UIColor.clearColor];
+            }
+        }
+
+        for (UIView *subview in view.subviews) {
+            [stack addObject:subview];
+        }
+    }
+
+    // The whole bottom input container is transparent.
+    inputView.backgroundColor = UIColor.clearColor;
+    inputView.layer.backgroundColor = UIColor.clearColor.CGColor;
+    inputView.layer.opaque = NO;
+
+    for (UIView *view in inputView.subviews) {
+        NSString *className = NSStringFromClass(view.class).lowercaseString;
+
+        if ([className isEqualToString:@"_uibarbbackground"] ||
+            [className containsString:@"blur"] ||
+            [view isKindOfClass:[UIImageView class]]) {
+            view.hidden = YES;
+            view.alpha = 0.0;
+        }
+    }
+
+    // Restore only the real text composer/editor so the input box itself
+    // remains native while everything around it stays transparent.
+    for (NSUInteger i = 0; i < editorViews.count; i++) {
+        UIView *editor = editorViews[i];
+        UIColor *nativeColor = backgrounds[i];
+
+        editor.hidden = NO;
+        editor.alpha = 1.0;
+        editor.backgroundColor = nativeColor;
+        editor.layer.backgroundColor = nativeColor.CGColor;
+        editor.layer.opaque = CGColorGetAlpha(nativeColor.CGColor) >= 0.999;
+    }
+}
+
 %end
 
 %hook KBToolbarView
+
 - (void)layoutSubviews {
     %orig;
 
-    UIView *view = (UIView *)self;
-    view.backgroundColor = UIColor.clearColor;
-    view.layer.backgroundColor = UIColor.clearColor.CGColor;
-    view.layer.opaque = NO;
+    UIView *toolbarView = (UIView *)self;
 
-    for (UIView *subview in view.subviews) {
-        NSString *className = NSStringFromClass(subview.class);
+    toolbarView.backgroundColor = UIColor.clearColor;
+    toolbarView.layer.backgroundColor = UIColor.clearColor.CGColor;
+    toolbarView.layer.opaque = NO;
 
-        // Hide the native bar background / blur and thin separators.
-        if ([className isEqualToString:@"_UIBarBackground"] ||
-            [className isEqualToString:@"_UIBackdropView"] ||
-            (subview.bounds.size.height > 0.0 &&
-             subview.bounds.size.height <= 1.0)) {
-            subview.hidden = YES;
-            subview.alpha = 0.0;
-            continue;
-        }
+    for (UIView *view in toolbarView.subviews) {
+        NSString *className = NSStringFromClass(view.class).lowercaseString;
 
-        // #22 dump: HPGrowingTextView -> MyTextView -> HPTextViewInternal.
-        // Do not hook their setters; clear them from the stable parent instead.
-        if ([className isEqualToString:@"HPGrowingTextView"]) {
-            if (subview.backgroundColor != UIColor.clearColor) {
-                subview.backgroundColor = UIColor.clearColor;
-            }
-
-            for (UIView *child in subview.subviews) {
-                NSString *childName = NSStringFromClass(child.class);
-                if ([childName isEqualToString:@"MyTextView"] ||
-                    [childName isEqualToString:@"HPTextViewInternal"]) {
-                    if (child.backgroundColor != UIColor.clearColor) {
-                        child.backgroundColor = UIColor.clearColor;
-                    }
-                }
-            }
+        // Remove only toolbar/background chrome. Do not touch the chat
+        // composer/input view itself.
+        if ([className isEqualToString:@"_uibarbbackground"] ||
+            [className containsString:@"background"] ||
+            [className containsString:@"blur"] ||
+            [view isKindOfClass:[UIImageView class]]) {
+            view.hidden = YES;
+            view.alpha = 0.0;
         }
     }
 }
+
 %end
 
 %hook UITabBar
+
 - (void)layoutSubviews {
     %orig;
 
-    UITabBar *bar = (UITabBar *)self;
-    bar.backgroundColor = UIColor.clearColor;
-    bar.backgroundImage = [UIImage new];
-    bar.shadowImage = [UIImage new];
+    UIView *tabBarView = (UIView *)self;
 
-    for (UIView *subview in bar.subviews) {
-        NSString *name = NSStringFromClass(subview.class).lowercaseString;
-        if ([name isEqualToString:@"_uibarbbackground"] ||
-            [name containsString:@"blur"]) {
-            subview.hidden = YES;
-            subview.alpha = 0.0;
+    tabBarView.backgroundColor = UIColor.clearColor;
+    tabBarView.layer.backgroundColor = UIColor.clearColor.CGColor;
+    tabBarView.layer.opaque = NO;
+    tabBarView.layer.shadowOpacity = 0.0;
+
+    for (UIView *view in tabBarView.subviews) {
+        NSString *className = NSStringFromClass(view.class);
+
+        if ([className isEqualToString:@"_UIBarBackground"] ||
+            [view isKindOfClass:[UIImageView class]]) {
+            view.hidden = YES;
+            view.alpha = 0.0;
         }
     }
 }
+
 %end
 
 %hook ZXCollectionView
+
 - (void)layoutSubviews {
     %orig;
-    ZolaApplyChatBackground((UIView *)self);
+
+    UIView *collectionView = (UIView *)self;
+    ZolaApplyChatBackground(collectionView);
 }
+
 %end
 
 %hook ALTextMessageTableItemCell
+
 - (void)layoutSubviews {
     %orig;
+
     UICollectionViewCell *cell = (UICollectionViewCell *)self;
     ZolaStyleBubblesInView(cell.contentView, cell);
 }
+
 %end
 
 #pragma mark - Notifications / install
@@ -1510,3 +1512,15 @@ static void ZolaRefreshChatBackgroundsInView(UIView *root) {
         }
     });
 }
+
+
+#pragma mark - Full transparency
+
+// Control experiment: #21 baseline + a no-op KBToolbarView hook.
+// This intentionally does not touch any view properties.
+
+%hook KBToolbarView
+- (void)layoutSubviews {
+    %orig;
+}
+%end
