@@ -1519,8 +1519,4 @@ static void ZolaRefreshChatBackgroundsInView(UIView *root) {
 // Control experiment: #21 baseline + a no-op KBToolbarView hook.
 // This intentionally does not touch any view properties.
 
-%hook KBToolbarView
-- (void)layoutSubviews {
-    %orig;
-}
-%end
+
