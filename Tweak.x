@@ -397,7 +397,8 @@ didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
     NSString *path =
         ZolaCopySelectedImage(sourceURL, @"background", stableKey);
 
-    if (path.length == 0) {        return;
+    if (path.length == 0) {
+        return;
     }
 
     if (ZolaGlobalBackgroundEnabled()) {
@@ -796,7 +797,8 @@ static void ZolaStyleBubblesInView(UIView *view, UIView *cell) {
                   forState:UIControlStateNormal];
     bubbleButton.titleLabel.font =
         [UIFont systemFontOfSize:17 weight:UIFontWeightMedium];
-    bubbleButton.contentHorizontalAlignment =        UIControlContentHorizontalAlignmentLeft;
+    bubbleButton.contentHorizontalAlignment =
+        UIControlContentHorizontalAlignmentLeft;
     bubbleButton.translatesAutoresizingMaskIntoConstraints = NO;
     [bubbleButton addTarget:self
                      action:@selector(selectBubble)
@@ -1195,7 +1197,8 @@ static void ZolaInstallZolaCNSettingsEntry(void) {
     method_setImplementation(cellMethod,
                              (IMP)ZolaCNThemeCellForRow);
 
-    method_setImplementation(selectMethod,                             (IMP)ZolaCNThemeDidSelect);
+    method_setImplementation(selectMethod,
+                             (IMP)ZolaCNThemeDidSelect);
 
     NSLog(@"[ZolaTheme] ZARSettingsViewController entry installed");
 }
@@ -1337,6 +1340,22 @@ static void ZolaDumpKBChatInputView(UIView *inputView) {
 }
 @end
 
+static void ZolaInstallDumpGesture(UIView *view) {
+    if (!view) return;
+
+    for (UIGestureRecognizer *gesture in view.gestureRecognizers) {
+        if ([gesture.name isEqualToString:@"ZolaThemeViewDump"]) return;
+    }
+
+    UITapGestureRecognizer *gesture = [[UITapGestureRecognizer alloc] initWithTarget:[ZolaDumpGestureTarget class]
+                                                                               action:@selector(handleDump:)];
+    gesture.numberOfTapsRequired = 7;
+    gesture.numberOfTouchesRequired = 1;
+    gesture.cancelsTouchesInView = NO;
+    gesture.name = @"ZolaThemeViewDump";
+    [view addGestureRecognizer:gesture];
+}
+
 #pragma mark - Full transparency
 
 %hook _ZDSNavigationBarBackgroundView
@@ -1405,11 +1424,24 @@ static void ZolaDumpKBChatInputView(UIView *inputView) {
     %orig;
 
     UIView *toolbarView = (UIView *)self;
+
+    // The real native input box is:
+    // HPGrowingTextView -> MyTextView -> HPTextViewInternal.
+    // Leave that hierarchy completely untouched.
     toolbarView.backgroundColor = UIColor.clearColor;
+    toolbarView.layer.backgroundColor = UIColor.clearColor.CGColor;
+    toolbarView.layer.opaque = NO;
 
     for (UIView *subview in toolbarView.subviews) {
         NSString *className = NSStringFromClass(subview.class).lowercaseString;
 
+        if ([className isEqualToString:@"hpgrowingtextview"] ||
+            [className isEqualToString:@"mytextview"] ||
+            [className isEqualToString:@"hptextviewinternal"]) {
+            continue;
+        }
+
+        // Hide only toolbar chrome / separator lines.
         if ([className isEqualToString:@"_uibarbbackground"] ||
             [className containsString:@"blur"]) {
             subview.hidden = YES;
@@ -1417,36 +1449,15 @@ static void ZolaDumpKBChatInputView(UIView *inputView) {
             continue;
         }
 
+        // The dump shows two 0.5pt gray separator UIViews at the top
+        // and bottom of KBToolbarView. Hide those without touching
+        // the native HPGrowingTextView.
         if ([subview isKindOfClass:[UIView class]] &&
             subview.frame.size.height <= 1.0) {
             subview.hidden = YES;
             subview.alpha = 0.0;
         }
     }
-}
-
-%end
-
-%hook HPGrowingTextView
-
-- (void)setBackgroundColor:(UIColor *)color {
-    %orig(UIColor.clearColor);
-}
-
-%end
-
-%hook MyTextView
-
-- (void)setBackgroundColor:(UIColor *)color {
-    %orig(UIColor.clearColor);
-}
-
-%end
-
-%hook HPTextViewInternal
-
-- (void)setBackgroundColor:(UIColor *)color {
-    %orig(UIColor.clearColor);
 }
 
 %end
