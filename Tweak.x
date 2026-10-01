@@ -1409,28 +1409,15 @@ static void ZolaDumpKBChatInputView(UIView *inputView) {
 
     UIView *toolbarView = (UIView *)self;
 
-    // The real native input box is:
-    // HPGrowingTextView -> MyTextView -> HPTextViewInternal.
-    // Leave that hierarchy completely untouched.
     toolbarView.backgroundColor = UIColor.clearColor;
-    toolbarView.layer.backgroundColor = UIColor.clearColor.CGColor;
-    toolbarView.layer.opaque = NO;
 
     for (UIView *subview in toolbarView.subviews) {
         NSString *className = NSStringFromClass(subview.class).lowercaseString;
 
-        // The native composer itself is also fully transparent.
-        // Keep the text/cursor/content, remove only its background.
-        if ([className isEqualToString:@"hpgrowingtextview"] ||
-            [className isEqualToString:@"mytextview"] ||
-            [className isEqualToString:@"hptextviewinternal"]) {
+        if ([className isEqualToString:@"hpgrowingtextview"]) {
             subview.backgroundColor = UIColor.clearColor;
-            subview.layer.backgroundColor = UIColor.clearColor.CGColor;
-            subview.layer.opaque = NO;
-            continue;
         }
 
-        // Hide only toolbar chrome / separator lines.
         if ([className isEqualToString:@"_uibarbbackground"] ||
             [className containsString:@"blur"]) {
             subview.hidden = YES;
@@ -1438,9 +1425,6 @@ static void ZolaDumpKBChatInputView(UIView *inputView) {
             continue;
         }
 
-        // The dump shows two 0.5pt gray separator UIViews at the top
-        // and bottom of KBToolbarView. Hide those without touching
-        // the native HPGrowingTextView.
         if ([subview isKindOfClass:[UIView class]] &&
             subview.frame.size.height <= 1.0) {
             subview.hidden = YES;
