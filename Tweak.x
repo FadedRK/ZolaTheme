@@ -1298,10 +1298,15 @@ static void ZolaThemeInstallSettingsHook(void) {
 
     UIView *inputView = (UIView *)self;
 
-    // Save the native appearance of the actual composer/editor controls
-    // before making the surrounding input container transparent.
-    NSMutableArray *editorViews = [NSMutableArray array];
-    NSMutableArray *backgrounds = [NSMutableArray array];
+    // Make the entire bottom input container transparent, including
+    // the native composer/editor. The view dump shows:
+    // KBToolbarView -> HPGrowingTextView -> MyTextView -> HPTextViewInternal.
+    // We clear the actual editor instances from the parent hook instead of
+    // hooking their backgroundColor setters (those setters caused launch
+    // instability in testing).
+    inputView.backgroundColor = UIColor.clearColor;
+    inputView.layer.backgroundColor = UIColor.clearColor.CGColor;
+    inputView.layer.opaque = NO;
 
     NSMutableArray *stack = [NSMutableArray arrayWithObject:inputView];
     while (stack.count) {
@@ -1309,18 +1314,17 @@ static void ZolaThemeInstallSettingsHook(void) {
         [stack removeLastObject];
 
         if (view != inputView) {
-            NSString *className = NSStringFromClass(view.class).lowercaseString;
+            NSString *className = NSStringFromClass(view.class);
 
-            BOOL editor =
-                [className containsString:@"textview"] ||
-                [className containsString:@"textfield"] ||
-                [className containsString:@"inputfield"] ||
-                [className containsString:@"composer"] ||
-                [className containsString:@"editor"];
+            BOOL isEditor =
+                [className isEqualToString:@"HPGrowingTextView"] ||
+                [className isEqualToString:@"MyTextView"] ||
+                [className isEqualToString:@"HPTextViewInternal"];
 
-            if (editor) {
-                [editorViews addObject:view];
-                [backgrounds addObject:view.backgroundColor ?: UIColor.clearColor];
+            if (isEditor) {
+                view.backgroundColor = UIColor.clearColor;
+                view.layer.backgroundColor = UIColor.clearColor.CGColor;
+                view.layer.opaque = NO;
             }
         }
 
@@ -1329,11 +1333,7 @@ static void ZolaThemeInstallSettingsHook(void) {
         }
     }
 
-    // The whole bottom input container is transparent.
-    inputView.backgroundColor = UIColor.clearColor;
-    inputView.layer.backgroundColor = UIColor.clearColor.CGColor;
-    inputView.layer.opaque = NO;
-
+    // Remove only visual chrome from the input container.
     for (UIView *view in inputView.subviews) {
         NSString *className = NSStringFromClass(view.class).lowercaseString;
 
@@ -1343,19 +1343,6 @@ static void ZolaThemeInstallSettingsHook(void) {
             view.hidden = YES;
             view.alpha = 0.0;
         }
-    }
-
-    // Restore only the real text composer/editor so the input box itself
-    // remains native while everything around it stays transparent.
-    for (NSUInteger i = 0; i < editorViews.count; i++) {
-        UIView *editor = editorViews[i];
-        UIColor *nativeColor = backgrounds[i];
-
-        editor.hidden = NO;
-        editor.alpha = 1.0;
-        editor.backgroundColor = nativeColor;
-        editor.layer.backgroundColor = nativeColor.CGColor;
-        editor.layer.opaque = CGColorGetAlpha(nativeColor.CGColor) >= 0.999;
     }
 }
 
