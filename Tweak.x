@@ -1252,6 +1252,110 @@ static void ZolaThemeInstallSettingsHook(void) {
                              (IMP)ZolaThemeViewDidAppear);
 }
 
+#pragma mark - View hierarchy dump
+
+static NSString *ZolaViewDumpPath(void) {
+    NSString *documents = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES).firstObject;
+    return [documents stringByAppendingPathComponent:@"ZolaThemeViewDump.txt"];
+}
+
+static NSString *ZolaColorDescription(UIColor *color) {
+    if (!color) return @"(nil)";
+    CGFloat r = 0, g = 0, b = 0, a = 0;
+    if ([color getRed:&r green:&g blue:&b alpha:&a]) {
+        return [NSString stringWithFormat:@"rgba(%.3f, %.3f, %.3f, %.3f)", r, g, b, a];
+    }
+    CGFloat white = 0;
+    if ([color getWhite:&white alpha:&a]) {
+        return [NSString stringWithFormat:@"white(%.3f, %.3f)", white, a];
+    }
+    return [color description] ?: @"(unknown)";
+}
+
+static void ZolaAppendViewDump(NSMutableString *output, UIView *view, NSUInteger depth) {
+    if (!view) return;
+
+    NSMutableString *indent = [NSMutableString string];
+    for (NSUInteger i = 0; i < depth; i++) [indent appendString:@"  "];
+
+    NSString *className = NSStringFromClass(view.class);
+    NSString *bg = ZolaColorDescription(view.backgroundColor);
+    NSString *layerBG = view.layer.backgroundColor ? [CIColor colorWithCGColor:view.layer.backgroundColor].description : @"(nil)";
+
+    [output appendFormat:@"%@Class: %@\n", indent, className];
+    [output appendFormat:@"%@Frame: %@\n", indent, NSStringFromCGRect(view.frame)];
+    [output appendFormat:@"%@Bounds: %@\n", indent, NSStringFromCGRect(view.bounds)];
+    [output appendFormat:@"%@Hidden: %@  Alpha: %.3f  FirstResponder: %@\n", indent, view.hidden ? @"YES" : @"NO", view.alpha, [view isFirstResponder] ? @"YES" : @"NO"];
+    [output appendFormat:@"%@Background: %@\n", indent, bg];
+    [output appendFormat:@"%@Layer background: %@  Opaque: %@\n", indent, layerBG, view.layer.opaque ? @"YES" : @"NO"];
+
+    if ([view isKindOfClass:[UITextView class]]) {
+        UITextView *tv = (UITextView *)view;
+        [output appendFormat:@"%@>>> UITextView textLength=%lu editable=%@\n", indent, (unsigned long)tv.text.length, tv.editable ? @"YES" : @"NO"];
+    }
+    if ([view isKindOfClass:[UITextField class]]) {
+        UITextField *tf = (UITextField *)view;
+        [output appendFormat:@"%@>>> UITextField textLength=%lu enabled=%@\n", indent, (unsigned long)tf.text.length, tf.enabled ? @"YES" : @"NO"];
+    }
+
+    for (UIView *subview in view.subviews) {
+        ZolaAppendViewDump(output, subview, depth + 1);
+    }
+}
+
+static void ZolaDumpKBChatInputView(UIView *inputView) {
+    NSMutableString *output = [NSMutableString string];
+    [output appendString:@"ZolaTheme View Dump\n"];
+    [output appendFormat:@"Date: %@\n\n", [NSDate date]];
+    [output appendString:@"===== KBChatInputComponentView =====\n"];
+    ZolaAppendViewDump(output, inputView, 0);
+
+    NSString *path = ZolaViewDumpPath();
+    NSError *error = nil;
+    if (![output writeToFile:path atomically:YES encoding:NSUTF8StringEncoding error:&error]) {
+        NSLog(@"[ZolaTheme] View dump failed: %@", error);
+    } else {
+        NSLog(@"[ZolaTheme] View dump saved: %@", path);
+    }
+}
+
+@interface ZolaDumpGestureTarget : NSObject
++ (void)handleDump:(UITapGestureRecognizer *)gesture;
+@end
+
+@implementation ZolaDumpGestureTarget
++ (void)handleDump:(UITapGestureRecognizer *)gesture {
+    if (gesture.state != UIGestureRecognizerStateEnded) return;
+
+    ZolaDumpKBChatInputView(gesture.view);
+
+    UIViewController *vc = gesture.view.window.rootViewController;
+    while (vc.presentedViewController) vc = vc.presentedViewController;
+
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"ZolaTheme"
+                                                                   message:@"View dump 已保存到 Documents/ZolaThemeViewDump.txt"
+                                                            preferredStyle:UIAlertControllerStyleAlert];
+    [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
+    [vc presentViewController:alert animated:YES completion:nil];
+}
+@end
+
+static void ZolaInstallDumpGesture(UIView *view) {
+    if (!view) return;
+
+    for (UIGestureRecognizer *gesture in view.gestureRecognizers) {
+        if ([gesture.name isEqualToString:@"ZolaThemeViewDump"]) return;
+    }
+
+    UITapGestureRecognizer *gesture = [[UITapGestureRecognizer alloc] initWithTarget:[ZolaDumpGestureTarget class]
+                                                                               action:@selector(handleDump:)];
+    gesture.numberOfTapsRequired = 7;
+    gesture.numberOfTouchesRequired = 1;
+    gesture.cancelsTouchesInView = NO;
+    gesture.name = @"ZolaThemeViewDump";
+    [view addGestureRecognizer:gesture];
+}
+
 #pragma mark - Full transparency
 
 %hook _ZDSNavigationBarBackgroundView
@@ -1297,6 +1401,7 @@ static void ZolaThemeInstallSettingsHook(void) {
     %orig;
 
     UIView *inputView = (UIView *)self;
+    ZolaInstallDumpGesture(inputView);
 
     // Save the native appearance of the actual composer/editor controls
     // before making the surrounding input container transparent.
