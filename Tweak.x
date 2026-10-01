@@ -1342,130 +1342,123 @@ static void ZolaDumpKBChatInputView(UIView *inputView) {
 
 #pragma mark - Full transparency
 
-%hook _ZDSNavigationBarBackgroundView
+// Exact classes identified by the #22 view hierarchy dump.
+// Keep these hooks narrow and avoid recursive hierarchy traversal.
 
+%hook _ZDSNavigationBarBackgroundView
 - (void)layoutSubviews {
     %orig;
-    UIView *view = (UIView *)self;
-    view.backgroundColor = UIColor.clearColor;
-    view.layer.backgroundColor = UIColor.clearColor.CGColor;
-    view.layer.opaque = NO;
+    UIView *view=(UIView *)self;
+    view.backgroundColor=UIColor.clearColor;
+    view.layer.backgroundColor=UIColor.clearColor.CGColor;
+    view.layer.opaque=NO;
+    for (UIView *subview in view.subviews) {
+        NSString *name=NSStringFromClass(subview.class).lowercaseString;
+        if ([name isEqualToString:@"_uibarbbackground"] || [name containsString:@"blur"]) {
+            subview.hidden=YES;
+            subview.alpha=0.0;
+        }
+    }
 }
-
 %end
 
 %hook UXNavigationBar
-
 - (void)layoutSubviews {
     %orig;
-    UIView *view = (UIView *)self;
-    view.backgroundColor = UIColor.clearColor;
-    view.layer.backgroundColor = UIColor.clearColor.CGColor;
-    view.layer.opaque = NO;
-
-    for (UIView *subview in view.subviews) {
-        NSString *className = NSStringFromClass(subview.class).lowercaseString;
-        if ([className isEqualToString:@"_uibarbbackground"] ||
-            [className containsString:@"blur"]) {
-            subview.hidden = YES;
-            subview.alpha = 0.0;
-        }
-    }
+    UIView *view=(UIView *)self;
+    view.backgroundColor=UIColor.clearColor;
+    view.layer.backgroundColor=UIColor.clearColor.CGColor;
+    view.layer.opaque=NO;
+    view.layer.shadowOpacity=0.0;
 }
-
 %end
 
 %hook KBChatInputComponentView
-
 - (void)layoutSubviews {
     %orig;
-
-    UIView *view = (UIView *)self;
-
-    // Make only the outer chat-input container transparent.
-    // Do NOT modify its child controls: Zalo's native composer lives
-    // inside KBToolbarView as HPGrowingTextView.
-    view.backgroundColor = UIColor.clearColor;
-    view.layer.backgroundColor = UIColor.clearColor.CGColor;
-    view.layer.opaque = NO;
-
+    UIView *view=(UIView *)self;
+    view.backgroundColor=UIColor.clearColor;
+    view.layer.backgroundColor=UIColor.clearColor.CGColor;
+    view.layer.opaque=NO;
     for (UIView *subview in view.subviews) {
-        NSString *className = NSStringFromClass(subview.class).lowercaseString;
-
-        if ([className isEqualToString:@"_uibarbbackground"] ||
-            [className containsString:@"blur"]) {
-            subview.hidden = YES;
-            subview.alpha = 0.0;
+        NSString *name=NSStringFromClass(subview.class).lowercaseString;
+        if ([name isEqualToString:@"_uibarbbackground"] || [name containsString:@"blur"]) {
+            subview.hidden=YES;
+            subview.alpha=0.0;
         }
     }
 }
-
 %end
 
 %hook KBToolbarView
-
 - (void)layoutSubviews {
     %orig;
-
-    UIView *toolbarView = (UIView *)self;
-
-    // The real native input box is:
-    // HPGrowingTextView -> MyTextView -> HPTextViewInternal.
-    // Leave that hierarchy completely untouched.
-    toolbarView.backgroundColor = UIColor.clearColor;
-    toolbarView.layer.backgroundColor = UIColor.clearColor.CGColor;
-    toolbarView.layer.opaque = NO;
-
-    for (UIView *subview in toolbarView.subviews) {
-        NSString *className = NSStringFromClass(subview.class).lowercaseString;
-
-        if ([className isEqualToString:@"hpgrowingtextview"] ||
-            [className isEqualToString:@"mytextview"] ||
-            [className isEqualToString:@"hptextviewinternal"]) {
-            continue;
-        }
-
-        // Hide only toolbar chrome / separator lines.
-        if ([className isEqualToString:@"_uibarbbackground"] ||
-            [className containsString:@"blur"]) {
-            subview.hidden = YES;
-            subview.alpha = 0.0;
-            continue;
-        }
-
-        // The dump shows two 0.5pt gray separator UIViews at the top
-        // and bottom of KBToolbarView. Hide those without touching
-        // the native HPGrowingTextView.
-        if ([subview isKindOfClass:[UIView class]] &&
-            subview.frame.size.height <= 1.0) {
-            subview.hidden = YES;
-            subview.alpha = 0.0;
+    UIView *view=(UIView *)self;
+    view.backgroundColor=UIColor.clearColor;
+    view.layer.backgroundColor=UIColor.clearColor.CGColor;
+    view.layer.opaque=NO;
+    for (UIView *subview in view.subviews) {
+        NSString *name=NSStringFromClass(subview.class).lowercaseString;
+        if ([name isEqualToString:@"_uibarbbackground"] ||
+            [name containsString:@"blur"] ||
+            (subview.frame.size.height > 0.0 && subview.frame.size.height <= 1.0)) {
+            subview.hidden=YES;
+            subview.alpha=0.0;
         }
     }
 }
+%end
 
+// #22 dump: HPGrowingTextView -> MyTextView -> HPTextViewInternal.
+// Force the native editor backgrounds clear through the setter.
+%hook HPGrowingTextView
+- (void)setBackgroundColor:(UIColor *)color {
+    %orig(UIColor.clearColor);
+}
+%end
+
+%hook MyTextView
+- (void)setBackgroundColor:(UIColor *)color {
+    %orig(UIColor.clearColor);
+}
+%end
+
+%hook HPTextViewInternal
+- (void)setBackgroundColor:(UIColor *)color {
+    %orig(UIColor.clearColor);
+}
 %end
 
 %hook UITabBar
-
 - (void)layoutSubviews {
     %orig;
-
-    UITabBar *bar = (UITabBar *)self;
-    bar.backgroundColor = UIColor.clearColor;
-    bar.backgroundImage = [UIImage new];
-    bar.shadowImage = [UIImage new];
-
-    for (UIView *view in bar.subviews) {
-        NSString *className = NSStringFromClass(view.class).lowercaseString;
-        if ([className isEqualToString:@"_uibarbbackground"] ||
-            [className containsString:@"blur"]) {
-            view.hidden = YES;
-            view.alpha = 0.0;
+    UITabBar *bar=(UITabBar *)self;
+    bar.backgroundColor=UIColor.clearColor;
+    bar.backgroundImage=[UIImage new];
+    bar.shadowImage=[UIImage new];
+    for (UIView *subview in bar.subviews) {
+        NSString *name=NSStringFromClass(subview.class).lowercaseString;
+        if ([name isEqualToString:@"_uibarbbackground"] || [name containsString:@"blur"]) {
+            subview.hidden=YES;
+            subview.alpha=0.0;
         }
     }
 }
+%end
 
+%hook ZXCollectionView
+- (void)layoutSubviews {
+    %orig;
+    ZolaApplyChatBackground((UIView *)self);
+}
+%end
+
+%hook ALTextMessageTableItemCell
+- (void)layoutSubviews {
+    %orig;
+    UICollectionViewCell *cell=(UICollectionViewCell *)self;
+    ZolaStyleBubblesInView(cell.contentView, cell);
+}
 %end
 
 #pragma mark - Notifications / install
